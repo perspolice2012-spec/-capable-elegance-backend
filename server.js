@@ -114,3 +114,46 @@ app.post('/login', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+app.get('/login.html', (req, res) => {
+  res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>ورود</title>
+</head>
+<body>
+<h2>ورود کاربر</h2>
+
+<input id="username" placeholder="username">
+<br><br>
+
+<input id="password" type="password" placeholder="password">
+<br><br>
+
+<button onclick="login()">ورود</button>
+
+<p id="result"></p>
+
+<script>
+async function login() {
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+
+  const r = await fetch('/login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username, password})
+  });
+
+  const data = await r.json();
+
+  document.getElementById('result').textContent =
+    data.message || data.error;
+}
+</script>
+
+</body>
+</html>
+  `);
+});
