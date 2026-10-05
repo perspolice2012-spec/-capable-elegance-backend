@@ -1,5 +1,6 @@
 import express from 'express';
 import pg from 'pg';
+import bcrypt from 'bcryptjs';
 
 const { Pool } = pg;
 const app = express();
@@ -52,9 +53,11 @@ app.post('/register', async (req, res) => {
       });
     }
 
+    const hashedPassword = await bcrypt.hash(password, 12);
+
     const r = await pool.query(
       'INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id, username',
-      [username, password]
+      [username, hashedPassword]
     );
 
     res.status(201).json({
