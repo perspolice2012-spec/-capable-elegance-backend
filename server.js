@@ -3,19 +3,13 @@ import pg from 'pg';
 
 const { Pool } = pg;
 const app = express();
+const port = process.env.PORT || 8080;
 
 app.use(express.json());
 
-const port = process.env.PORT || 3000;
-
-if (!process.env.DATABASE_URL) {
-  console.error('DATABASE_URL is not set.');
-  process.exit(1);
-}
-
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL.includes('sslmode=require')
+  ssl: process.env.DATABASE_URL?.includes('sslmode=require')
     ? { rejectUnauthorized: false }
     : false
 });
@@ -30,18 +24,12 @@ app.get('/', (req, res) => {
 app.get('/db-test', async (req, res) => {
   try {
     const r = await pool.query('SELECT NOW() AS time');
-
     res.json({
       database: 'connected',
       time: r.rows[0].time
     });
   } catch (e) {
-    console.error(e);
-
-    res.status(500).json({
-      database: 'error',
-      message: e.message
-    });
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -50,14 +38,9 @@ app.get('/users', async (req, res) => {
     const r = await pool.query(
       'SELECT id, username FROM users ORDER BY id'
     );
-
     res.json(r.rows);
   } catch (e) {
-    console.error(e);
-
-    res.status(500).json({
-      error: e.message
-    });
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -71,17 +54,6 @@ app.post('/register', async (req, res) => {
       });
     }
 
-    const existing = await pool.query(
-      'SELECT id FROM users WHERE username = $1',
-      [username]
-    );
-
-    if (existing.rows.length > 0) {
-      return res.status(409).json({
-        error: 'username already exists'
-      });
-    }
-
     const result = await pool.query(
       'INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id, username',
       [username, password]
@@ -91,16 +63,28 @@ app.post('/register', async (req, res) => {
       message: 'user registered',
       user: result.rows[0]
     });
-
   } catch (e) {
-    console.error(e);
-
-    res.status(500).json({
-      error: e.message
-    });
+    res.status(500).json({ error: e.message });
   }
 });
 
-app.listen(port, '0.0.0.0', () => {
-  console.log(`Backend listening on port ${port}`);
-});
+app.get('/register.html', (req, res) => {
+  res.send(`
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ثبت نام</title>
+</head>
+<body style="font-family:Arial;max-width:400px;margin:50px auto;padding:20px">
+<h2>ثبت نام کاربر</h2>
+
+<input id="username" placeholder="نام کاربری"
+style="width:100%;padding:12px;margin:8px 0">
+
+<input id="password" type="password" placeholder="رمز عبور"
+style="width:100%;padding:12px;margin:8px 0">
+
+<button onclick="register()"
+style="width:100
