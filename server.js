@@ -17,7 +17,7 @@ const pool = new Pool({
     : false
 });
 
-// صفحه ورود
+/* صفحه اصلی */
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -25,26 +25,85 @@ app.get('/', (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ورود به سیستم</title>
+  <title>ثبت‌نام و ورود</title>
 </head>
 <body>
 
-<h2>ورود به سیستم</h2>
+<h2>ثبت‌نام</h2>
 
-<input id="username" type="text" placeholder="نام کاربری">
+<input id="registerUsername" type="text" placeholder="نام کاربری">
 <br><br>
 
-<input id="password" type="password" placeholder="رمز عبور">
+<input id="registerPassword" type="password" placeholder="رمز عبور">
+<br><br>
+
+<button onclick="register()">ثبت‌نام</button>
+
+<p id="registerResult"></p>
+
+<hr>
+
+<h2>ورود</h2>
+
+<input id="loginUsername" type="text" placeholder="نام کاربری">
+<br><br>
+
+<input id="loginPassword" type="password" placeholder="رمز عبور">
 <br><br>
 
 <button onclick="login()">ورود</button>
 
-<p id="result"></p>
+<p id="loginResult"></p>
 
 <script>
+async function register() {
+  const username =
+    document.getElementById('registerUsername').value.trim();
+
+  const password =
+    document.getElementById('registerPassword').value;
+
+  if (!username || !password) {
+    document.getElementById('registerResult').textContent =
+      'نام کاربری و رمز عبور را وارد کنید';
+    return;
+  }
+
+  try {
+    const r = await fetch('/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        username,
+        password
+      })
+    });
+
+    const data = await r.json();
+
+    document.getElementById('registerResult').textContent =
+      data.message || data.error || 'خطا';
+
+  } catch (error) {
+    document.getElementById('registerResult').textContent =
+      'خطا در اتصال به سرور';
+  }
+}
+
 async function login() {
-  const username = document.getElementById('username').value;
-  const password = document.getElementById('password').value;
+  const username =
+    document.getElementById('loginUsername').value.trim();
+
+  const password =
+    document.getElementById('loginPassword').value;
+
+  if (!username || !password) {
+    document.getElementById('loginResult').textContent =
+      'نام کاربری و رمز عبور را وارد کنید';
+    return;
+  }
 
   try {
     const r = await fetch('/login', {
@@ -60,10 +119,11 @@ async function login() {
 
     const data = await r.json();
 
-    document.getElementById('result').textContent =
+    document.getElementById('loginResult').textContent =
       data.message || data.error || 'خطا';
+
   } catch (error) {
-    document.getElementById('result').textContent =
+    document.getElementById('loginResult').textContent =
       'خطا در اتصال به سرور';
   }
 }
@@ -74,7 +134,49 @@ async function login() {
   `);
 });
 
-// ورود
+/* ثبت‌نام */
+app.post('/register', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({
+        error: 'نام کاربری و رمز عبور را وارد کنید'
+      });
+    }
+
+    const existingUser = await pool.query(
+      'SELECT id FROM users WHERE username = $1 LIMIT 1',
+      [username]
+    );
+
+    if (existingUser.rows.length > 0) {
+      return res.status(409).json({
+        error: 'این نام کاربری قبلاً ثبت شده است'
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await pool.query(
+      'INSERT INTO users (username, password) VALUES ($1, $2)',
+      [username, hashedPassword]
+    );
+
+    return res.status(201).json({
+      message: 'ثبت‌نام با موفقیت انجام شد'
+    });
+
+  } catch (error) {
+    console.error('Register error:', error);
+
+    return res.status(500).json({
+      error: 'خطای سرور یا دیتابیس'
+    });
+  }
+});
+
+/* ورود */
 app.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -122,7 +224,7 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// تست اتصال PostgreSQL
+/* تست دیتابیس */
 app.get('/db-test', async (req, res) => {
   try {
     const result = await pool.query('SELECT NOW()');
@@ -131,6 +233,7 @@ app.get('/db-test', async (req, res) => {
       message: 'اتصال به PostgreSQL موفق است',
       time: result.rows[0].now
     });
+
   } catch (error) {
     console.error('Database error:', error);
 
