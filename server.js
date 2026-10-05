@@ -69,49 +69,48 @@ app.post('/register', async (req, res) => {
   }
 });
 
-app.get('/register.html', (req, res) => {
-  res.send(`
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>ثبت نام</title>
-</head>
-<body>
-<h2>ثبت نام کاربر</h2>
+app.post('/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
 
-<input id="username" placeholder="username">
-<br><br>
+    if (!username || !password) {
+      return res.status(400).json({
+        error: 'username and password are required'
+      });
+    }
 
-<input id="password" type="password" placeholder="password">
-<br><br>
+    const r = await pool.query(
+      'SELECT id, username, password FROM users WHERE username = $1',
+      [username]
+    );
 
-<button onclick="register()">ثبت نام</button>
+    if (r.rows.length === 0) {
+      return res.status(401).json({
+        error: 'invalid username or password'
+      });
+    }
 
-<p id="result"></p>
+    const user = r.rows[0];
 
-<script>
-async function register() {
-  const username = document.getElementById('username').value;
-  const password = document.getElementById('password').value;
+    const passwordMatch = await bcrypt.compare(
+      password,
+      user.password
+    );
 
-  const r = await fetch('/register', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({username, password})
-  });
+    if (!passwordMatch) {
+      return res.status(401).json({
+        error: 'invalid username or password'
+      });
+    }
 
-  const data = await r.json();
-  document.getElementById('result').textContent =
-    data.message || data.error;
-}
-</script>
-
-</body>
-</html>
-  `);
-});
-
-app.listen(port, '0.0.0.0', () => {
-  console.log('Backend running on port ' + port);
+    res.json({
+      message: 'login successful',
+      user: {
+        id: user.id,
+        username: user.username
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
