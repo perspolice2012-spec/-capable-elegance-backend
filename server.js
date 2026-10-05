@@ -152,6 +152,14 @@ async function login() {
     data.message || data.error;
 }
 </script>
+</body>
+</html>
+  `);
+});
+
+app.listen(port, '0.0.0.0', () => {
+  console.log('Backend running on port ' + port);
+});
 
 </body>
 </html>
