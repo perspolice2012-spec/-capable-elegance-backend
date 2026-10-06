@@ -1,17 +1,26 @@
 import express from "express";
+import pg from "pg";
+
+const { Pool } = pg;
 
 const app = express();
 const PORT = process.env.PORT || 8080;
-const { Pool } = pg;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
+
+app.use(express.json());
+
 app.get("/", (req, res) => {
-  app.get("/db-test", async (req, res) => {
+  res.send("چیکام - سرور فعال است");
+});
+
+app.get("/db-test", async (req, res) => {
   try {
     const result = await pool.query("SELECT NOW()");
+
     res.json({
       message: "اتصال به PostgreSQL موفق است",
       time: result.rows[0].now
@@ -22,8 +31,6 @@ app.get("/", (req, res) => {
       error: error.message
     });
   }
-});
-  res.send("چیکام - سرور فعال است");
 });
 
 app.listen(PORT, "0.0.0.0", () => {
