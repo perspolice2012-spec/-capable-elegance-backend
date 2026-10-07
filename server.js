@@ -6,20 +6,13 @@ import crypto from "crypto";
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-/* =========================
-   BASIC SECURITY HEADERS
-========================= */
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  res.setHeader(
-    "Referrer-Policy",
-    "strict-origin-when-cross-origin"
-  );
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader(
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=()"
@@ -27,227 +20,155 @@ app.use((req, res, next) => {
   next();
 });
 
-/* =========================
-   DATABASE
-========================= */
-
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
-
-/* =========================
-   SESSION SECURITY
-========================= */
 
 const SESSION_SECRET =
   process.env.SESSION_SECRET ||
   crypto.randomBytes(32).toString("hex");
 
-function createSessionToken(user) {
-  const payload = Buffer.from(
-    JSON.stringify({
-      id: user.id,
-      username: user.username,
-      role: user.role || "user",
-      exp: Date.now() + 7 * 24 * 60 * 60 * 1000
-    })
-  ).toString("base64url");
+const USER_COOKIE = "chikam_session";
+const ADMIN_COOKIE = "chikam_admin";
+
+const USER_SESSION_MS = 7 * 24 * 60 * 60 * 1000;
+const ADMIN_SESSION_MS = 4 * 60 * 60 * 1000;
+
+function safeEqual(a, b) {
+  const aa = Buffer.from(String(a || ""));
+  const bb = Buffer.from(String(b || ""));
+
+  if (aa.length !== bb.length) return false;
+
+  return crypto.timingSafeEqual(aa, bb);
+}
+
+function signToken(payload) {
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
 
   const signature = crypto
     .createHmac("sha256", SESSION_SECRET)
-    .update(payload)
+    .update(body)
     .digest("base64url");
 
-  return payload + "." + signature;
+  return body + "." + signature;
 }
 
-function verifySessionToken(token) {
+function verifyToken(token) {
   try {
-    if (!token) {
-      return null;
-    }
+    if (!token) return null;
 
-    const parts = token.split(".");
+    const parts = String(token).split(".");
 
-    if (parts.length !== 2) {
-      return null;
-    }
-
-    const payload = parts[0];
-    const signature = parts[1];
-
-    const expectedSignature = crypto
-      .createHmac("sha256", SESSION_SECRET)
-      .update(payload)
-      .digest("base64url");
-
-    const signatureBuffer = Buffer.from(signature);
-    const expectedBuffer = Buffer.from(expectedSignature);
-
-    if (
-      signatureBuffer.length !==
-      expectedBuffer.length
-    ) {
-      return null;
-    }
-
-    if (
-      !crypto.timingSafeEqual(
-        signatureBuffer,
-        expectedBuffer
-      )
-    ) {
-      return null;
-    }
-
-    const data = JSON.parse(
-      Buffer.from(payload, "base64url").toString()
-    );
-
-    if (!data.exp || Date.now() > data.exp) {
-      return null;
-    }
-
-    return data;
-
-  } catch {
-    return null;
-  }
-}
-
-function getSession(req) {
-  const cookies = req.headers.cookie || "";
-
-  const match = cookies.match(
-    /(?:^|;\s*)chikam_session=([^;]+)/
-  );
-
-  if (!match) {
-    return null;
-  }
-
-  return verifySessionToken(
-    decodeURIComponent(match[1])
-  );
-}
-
-function setUserSession(res, user) {
-  const token = createSessionToken(user);
-
-  res.setHeader(
-    "Set-Cookie",
-    "chikam_session=" +
-      encodeURIComponent(token) +
-      "; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=604800"
-  );
-}
-
-function clearUserSession(res) {
-  res.setHeader(
-    "Set-Cookie",
-    "chikam_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"
-  );
-}
-
-/* =========================
-   ADMIN SESSION
-========================= */
-
-function createAdminToken() {
-  const payload = Buffer.from(
-    JSON.stringify({
-      role: "admin",
-      exp: Date.now() + 4 * 60 * 60 * 1000
-    })
-  ).toString("base64url");
-
-  const signature = crypto
-    .createHmac("sha256", SESSION_SECRET)
-    .update(payload)
-    .digest("base64url");
-
-  return payload + "." + signature;
-}
-
-function verifyAdminToken(token) {
-  try {
-    if (!token) {
-      return false;
-    }
-
-    const parts = token.split(".");
-
-    if (parts.length !== 2) {
-      return false;
-    }
-
-    const payload = parts[0];
-    const signature = parts[1];
+    if (parts.length !== 2) return null;
 
     const expected = crypto
       .createHmac("sha256", SESSION_SECRET)
-      .update(payload)
+      .update(parts[0])
       .digest("base64url");
 
-    const signatureBuffer = Buffer.from(signature);
-    const expectedBuffer = Buffer.from(expected);
+    if (!safeEqual(parts[1], expected)) return null;
 
-    if (
-      signatureBuffer.length !==
-      expectedBuffer.length
-    ) {
-      return false;
-    }
-
-    if (
-      !crypto.timingSafeEqual(
-        signatureBuffer,
-        expectedBuffer
-      )
-    ) {
-      return false;
-    }
-
-    const data = JSON.parse(
-      Buffer.from(payload, "base64url").toString()
+    const payload = JSON.parse(
+      Buffer.from(parts[0], "base64url").toString("utf8")
     );
 
-    return (
-      data.role === "admin" &&
-      data.exp &&
-      Date.now() < data.exp
-    );
+    if (!payload.exp || Date.now() > payload.exp) {
+      return null;
+    }
 
+    return payload;
   } catch {
-    return false;
+    return null;
   }
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie || "";
+  const cookies = {};
+
+  for (const part of header.split(";")) {
+    const index = part.indexOf("=");
+
+    if (index < 0) continue;
+
+    const key = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+
+    cookies[key] = decodeURIComponent(value);
+  }
+
+  return cookies;
+}
+
+function setCookie(res, name, value, maxAge, sameSite = "Lax") {
+  res.setHeader(
+    "Set-Cookie",
+    `${name}=${encodeURIComponent(
+      value
+    )}; Max-Age=${Math.floor(
+      maxAge / 1000
+    )}; Path=/; HttpOnly; Secure; SameSite=${sameSite}`
+  );
+}
+
+function clearCookie(res, name, sameSite = "Lax") {
+  res.setHeader(
+    "Set-Cookie",
+    `${name}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=${sameSite}`
+  );
+}
+
+function getSession(req) {
+  const cookies = parseCookies(req);
+
+  const payload = verifyToken(cookies[USER_COOKIE]);
+
+  if (!payload || !payload.userId) {
+    return null;
+  }
+
+  return payload;
 }
 
 function getAdminSession(req) {
-  const cookies = req.headers.cookie || "";
+  const cookies = parseCookies(req);
 
-  const match = cookies.match(
-    /(?:^|;\s*)chikam_admin=([^;]+)/
-  );
+  const payload = verifyToken(cookies[ADMIN_COOKIE]);
 
-  if (!match) {
-    return false;
+  if (!payload || payload.admin !== true) {
+    return null;
   }
 
-  return verifyAdminToken(
-    decodeURIComponent(match[1])
-  );
+  return payload;
+}
+
+function requireAdmin(req, res, next) {
+  if (!getAdminSession(req)) {
+    return res.status(401).json({
+      ok: false,
+      message: "دسترسی مدیر لازم است."
+    });
+  }
+
+  next();
+}
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 /* =========================
-   DATABASE INIT
+   DATABASE
 ========================= */
 
 async function initDatabase() {
-
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
@@ -276,669 +197,341 @@ async function initDatabase() {
       username VARCHAR(100),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
-  `);
 
-  await pool.query(`
     ALTER TABLE ideas
-    ADD COLUMN IF NOT EXISTS username VARCHAR(100);
-  `);
+      ADD COLUMN IF NOT EXISTS username VARCHAR(100);
 
-  await pool.query(`
     ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS email VARCHAR(255);
-  `);
+      ADD COLUMN IF NOT EXISTS email VARCHAR(255);
 
-  await pool.query(`
     ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
-  `);
+      ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
 
-  await pool.query(`
     ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS password_hash TEXT;
+      ADD COLUMN IF NOT EXISTS password_hash TEXT;
   `);
-
-  console.log("DATABASE READY");
 }
 
 /* =========================
-   MAIN PAGE
+   HEALTH / DATABASE TEST
 ========================= */
 
-app.get("/", async (req, res) => {
+app.get("/health", (req, res) => {
+  res.json({
+    ok: true,
+    service: "CHIKAM",
+    time: new Date().toISOString()
+  });
+});
 
+app.get("/db-test", async (req, res) => {
   try {
+    const result = await pool.query("SELECT NOW() AS now");
 
-    const ideasResult = await pool.query(`
-      SELECT
-        id,
-        title,
-        description,
-        solution,
-        category,
-        participation_type,
+    res.json({
+      ok: true,
+      database: "connected",
+      now: result.rows[0].now
+    });
+  } catch (error) {
+    console.error("DB TEST ERROR:", error);
+
+    res.status(500).json({
+      ok: false,
+      message: "خطا در اتصال پایگاه داده."
+    });
+  }
+});
+
+/* =========================
+   REGISTER
+========================= */
+
+app.post("/register", async (req, res) => {
+  try {
+    const username = String(req.body.username || "").trim();
+    const password = String(req.body.password || "");
+    const confirmPassword = String(
+      req.body.confirmPassword || ""
+    );
+
+    const phone =
+      String(req.body.phone || "").trim() || null;
+
+    const email =
+      String(req.body.email || "")
+        .trim()
+        .toLowerCase() || null;
+
+    if (!username || username.length < 3) {
+      return res.status(400).json({
+        ok: false,
+        message: "نام کاربری حداقل ۳ کاراکتر باشد."
+      });
+    }
+
+    if (username.length > 100) {
+      return res.status(400).json({
+        ok: false,
+        message: "نام کاربری بیش از حد طولانی است."
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        ok: false,
+        message: "رمز عبور حداقل ۶ کاراکتر باشد."
+      });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        ok: false,
+        message: "تکرار رمز عبور یکسان نیست."
+      });
+    }
+
+    const duplicate = await pool.query(
+      `SELECT username, phone, email
+       FROM users
+       WHERE username = $1
+          OR ($2::text IS NOT NULL AND phone = $2)
+          OR ($3::text IS NOT NULL AND email = $3)
+       LIMIT 1`,
+      [username, phone, email]
+    );
+
+    if (duplicate.rows.length) {
+      const row = duplicate.rows[0];
+
+      if (row.username === username) {
+        return res.status(409).json({
+          ok: false,
+          message: "این نام کاربری قبلاً ثبت شده است."
+        });
+      }
+
+      if (phone && row.phone === phone) {
+        return res.status(409).json({
+          ok: false,
+          message: "این شماره تلفن قبلاً استفاده شده است."
+        });
+      }
+
+      if (email && row.email === email) {
+        return res.status(409).json({
+          ok: false,
+          message: "این ایمیل قبلاً استفاده شده است."
+        });
+      }
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    const result = await pool.query(
+      `INSERT INTO users
+        (username, password_hash, phone, email)
+       VALUES
+        ($1, $2, $3, $4)
+       RETURNING
+        id, username, phone, email, created_at`,
+      [
         username,
-        created_at
-      FROM ideas
-      ORDER BY id DESC
-    `);
-
-    const ideas = ideasResult.rows;
-
-    const ideaHTML =
-      ideas.length === 0
-        ? `<div class="empty">هنوز ایده‌ای ثبت نشده است.</div>`
-        : ideas
-            .map(
-              (idea) => `
-                <div class="idea-card">
-
-                  <h3>
-                    ${escapeHTML(idea.title)}
-                  </h3>
-
-                  ${
-                    idea.description
-                      ? `
-                        <p>
-                          <strong>توضیحات:</strong>
-                          ${escapeHTML(idea.description)}
-                        </p>
-                      `
-                      : ""
-                  }
-
-                  ${
-                    idea.solution
-                      ? `
-                        <p>
-                          <strong>راه‌حل:</strong>
-                          ${escapeHTML(idea.solution)}
-                        </p>
-                      `
-                      : ""
-                  }
-
-                  ${
-                    idea.category
-                      ? `
-                        <span class="tag">
-                          ${escapeHTML(idea.category)}
-                        </span>
-                      `
-                      : ""
-                  }
-
-                  ${
-                    idea.participation_type
-                      ? `
-                        <span class="tag">
-                          ${escapeHTML(
-                            idea.participation_type
-                          )}
-                        </span>
-                      `
-                      : ""
-                  }
-
-                  ${
-                    idea.username
-                      ? `
-                        <div class="idea-user">
-                          ایجادکننده:
-                          ${escapeHTML(idea.username)}
-                        </div>
-                      `
-                      : ""
-                  }
-
-                </div>
-              `
-            )
-            .join("");
-
-    res.send(`
-<!DOCTYPE html>
-
-<html lang="fa" dir="rtl">
-
-<head>
-
-<meta charset="UTF-8">
-
-<meta
-  name="viewport"
-  content="width=device-width, initial-scale=1.0"
->
-
-<title>CHIKAM | چیکام</title>
-
-<style>
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-
-  font-family:
-    Tahoma,
-    Arial,
-    sans-serif;
-
-  background:
-    radial-gradient(
-      circle at top right,
-      rgba(80,120,255,.12),
-      transparent 35%
-    ),
-    linear-gradient(
-      135deg,
-      #f6f8fc,
-      #eef2f7
+        passwordHash,
+        phone,
+        email
+      ]
     );
 
-  color: #172033;
-}
+    res.status(201).json({
+      ok: true,
+      message: "حساب با موفقیت ایجاد شد.",
+      user: result.rows[0]
+    });
+  } catch (error) {
+    console.error("REGISTER ERROR:", error);
 
-header {
-  background:
-    rgba(255,255,255,.95);
+    res.status(500).json({
+      ok: false,
+      message: "خطا در ایجاد حساب."
+    });
+  }
+});
 
-  border-bottom:
-    1px solid #e3e7ef;
+/* =========================
+   LOGIN
+========================= */
 
-  padding:
-    14px 22px;
+app.post("/login", async (req, res) => {
+  try {
+    const username = String(
+      req.body.username || ""
+    ).trim();
 
-  position:
-    sticky;
-
-  top: 0;
-
-  z-index: 10;
-
-  backdrop-filter:
-    blur(12px);
-}
-
-.header-inner {
-  max-width:
-    1150px;
-
-  margin:
-    auto;
-
-  display:
-    flex;
-
-  justify-content:
-    space-between;
-
-  align-items:
-    center;
-}
-
-.logo {
-  font-size:
-    22px;
-
-  font-weight:
-    800;
-
-  letter-spacing:
-    .5px;
-}
-
-.logo span {
-  color:
-    #4767d9;
-}
-
-.header-actions {
-  display:
-    flex;
-
-  align-items:
-    center;
-
-  gap:
-    10px;
-}
-
-.header-link {
-  color:
-    #5c667a;
-
-  text-decoration:
-    none;
-
-  font-size:
-    13px;
-}
-
-.user-status {
-  display:
-    none;
-
-  align-items:
-    center;
-
-  gap:
-    8px;
-
-  background:
-    #edf7f0;
-
-  color:
-    #24733d;
-
-  border-radius:
-    20px;
-
-  padding:
-    7px 12px;
-
-  font-size:
-    12px;
-}
-
-.logout-small {
-  display:
-    none;
-
-  background:
-    #f2f4f8;
-
-  color:
-    #3e4a60;
-
-  padding:
-    8px 13px;
-
-  border-radius:
-    10px;
-
-  font-size:
-    12px;
-}
-
-.hero {
-  max-width:
-    1150px;
-
-  margin:
-    35px auto 20px;
-
-  padding:
-    42px 25px;
-
-  border-radius:
-    24px;
-
-  background:
-    linear-gradient(
-      135deg,
-      rgba(65,91,180,.96),
-      rgba(88,116,220,.88)
+    const password = String(
+      req.body.password || ""
     );
 
-  color:
-    white;
-
-  text-align:
-    center;
-
-  box-shadow:
-    0 18px 45px
-    rgba(45,65,130,.18);
-}
-
-.hero h1 {
-  margin:
-    0 0 12px;
-
-  font-size:
-    clamp(28px, 5vw, 44px);
-}
-
-.hero p {
-  margin:
-    0;
-
-  opacity:
-    .92;
-
-  font-size:
-    17px;
-}
-
-.container {
-  max-width:
-    1150px;
-
-  margin:
-    auto;
-
-  padding:
-    0 18px 50px;
-}
-
-.grid {
-  display:
-    grid;
-
-  grid-template-columns:
-    repeat(2, minmax(0, 1fr));
-
-  gap:
-    20px;
-}
-
-.card {
-  background:
-    rgba(255,255,255,.96);
-
-  border:
-    1px solid #e2e7f0;
-
-  border-radius:
-    20px;
-
-  padding:
-    24px;
-
-  box-shadow:
-    0 10px 30px
-    rgba(25,35,60,.06);
-}
-
-.card.full {
-  grid-column:
-    1 / -1;
-}
-
-.card h2 {
-  margin-top:
-    0;
-
-  font-size:
-    20px;
-}
-
-.subtitle {
-  color:
-    #727b8d;
-
-  font-size:
-    13px;
-
-  margin-top:
-    -6px;
-
-  margin-bottom:
-    18px;
-
-  line-height:
-    1.8;
-}
-
-input,
-textarea,
-select {
-  width:
-    100%;
-
-  border:
-    1px solid #d9dfeb;
-
-  background:
-    #fbfcfe;
-
-  border-radius:
-    12px;
-
-  padding:
-    13px 14px;
-
-  margin-bottom:
-    12px;
-
-  font-family:
-    inherit;
-
-  font-size:
-    14px;
-
-  outline:
-    none;
-}
-
-input:focus,
-textarea:focus,
-select:focus {
-  border-color:
-    #637fe4;
-
-  box-shadow:
-    0 0 0 3px
-    rgba(99,127,228,.10);
-}
-
-textarea {
-  min-height:
-    105px;
-
-  resize:
-    vertical;
-}
-
-.password-wrap {
-  position:
-    relative;
-}
-
-.password-wrap input {
-  padding-left:
-    50px;
-}
-
-.eye {
-  position:
-    absolute;
-
-  left:
-    10px;
-
-  top:
-    7px;
-
-  width:
-    38px;
-
-  height:
-    38px;
-
-  border:
-    none;
-
-  background:
-    transparent;
-
-  cursor:
-    pointer;
-
-  font-size:
-    20px;
-
-  padding:
-    0;
-
-  color:
-    #4f5d75;
-}
-
-.eye:hover {
-  background:
-    #edf1f8;
-
-  border-radius:
-    9px;
-}
-
-.buttons {
-  display:
-    flex;
-
-  gap:
-    10px;
-
-  flex-wrap:
-    wrap;
-}
-
-button {
-  border:
-    none;
-
-  border-radius:
-    11px;
-
-  padding:
-    12px 20px;
-
-  cursor:
-    pointer;
-
-  font-family:
-    inherit;
-
-  font-weight:
-    700;
-}
-
-.primary {
-  background:
-    #4767d9;
-
-  color:
-    white;
-}
-
-.secondary {
-  background:
-    #edf1f8;
-
-  color:
-    #34405a;
-}
-
-.danger {
-  background:
-    #fceeee;
-
-  color:
-    #a33a3a;
-}
-
-button:hover {
-  opacity:
-    .9;
-}
-
-.message {
-  margin-top:
-    12px;
-
-  min-height:
-    20px;
-
-  font-size:
-    13px;
-
-  color:
-    #566176;
-
-  line-height:
-    1.8;
-}
-
-.logged-message {
-  display:
-    none;
-
-  background:
-    #f1f8f3;
-
-  border:
-    1px solid #d8eadc;
-
-  color:
-    #2d6840;
-
-  padding:
-    12px;
-
-  border-radius:
-    12px;
-
-  margin-bottom:
-    14px;
-
-  font-size:
-    13px;
-}
-
-.ad-box {
-  border:
-    1px dashed #c8cfdd;
-
-  background:
-    rgba(255,255,255,.65);
-
-  border-radius:
-    16px;
-
-  min-height:
-    90px;
-
-  display:
-    flex;
-
-  align-items:
-    center;
-
-  justify-content:
-    center;
-
-  color:
-    #8a93a4;
-
-  margin-bottom:
-    20px;
-}
-
-.idea-card {
-  background:
-    #fafbfe;
-
-  border:
-    1px solid #e3e7ef;
-
-  border-radius:
-    15px;
-
-  padding:
-    18px;
-
-  margin-bottom:
-    12px;
-}
-
-.idea-card h3 {
-  margin:
-    0 0 12px;
-}
-
-.idea-card p
+    if (!username || !password) {
+      return res.status(400).json({
+        ok: false,
+        message: "نام کاربری و رمز عبور را وارد کنید."
+      });
+    }
+
+    const result = await pool.query(
+      `SELECT id, username, password_hash
+       FROM users
+       WHERE username = $1
+       LIMIT 1`,
+      [username]
+    );
+
+    if (!result.rows.length) {
+      return res.status(401).json({
+        ok: false,
+        message: "نام کاربری یا رمز عبور اشتباه است."
+      });
+    }
+
+    const user = result.rows[0];
+
+    const valid = await bcrypt.compare(
+      password,
+      user.password_hash
+    );
+
+    if (!valid) {
+      return res.status(401).json({
+        ok: false,
+        message: "نام کاربری یا رمز عبور اشتباه است."
+      });
+    }
+
+    const token = signToken({
+      userId: user.id,
+      username: user.username,
+      exp: Date.now() + USER_SESSION_MS
+    });
+
+    setCookie(
+      res,
+      USER_COOKIE,
+      token,
+      USER_SESSION_MS,
+      "Lax"
+    );
+
+    res.json({
+      ok: true,
+      message: "ورود با موفقیت انجام شد.",
+      username: user.username
+    });
+  } catch (error) {
+    console.error("LOGIN ERROR:", error);
+
+    res.status(500).json({
+      ok: false,
+      message: "خطا در ورود."
+    });
+  }
+});
+
+/* =========================
+   CURRENT USER
+========================= */
+
+app.get("/me", async (req, res) => {
+  try {
+    const session = getSession(req);
+
+    if (!session) {
+      return res.json({
+        loggedIn: false
+      });
+    }
+
+    const result = await pool.query(
+      `SELECT id, username, phone, email
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [session.userId]
+    );
+
+    if (!result.rows.length) {
+      clearCookie(
+        res,
+        USER_COOKIE,
+        "Lax"
+      );
+
+      return res.json({
+        loggedIn: false
+      });
+    }
+
+    res.json({
+      loggedIn: true,
+      user: result.rows[0],
+      username: result.rows[0].username
+    });
+  } catch (error) {
+    console.error("ME ERROR:", error);
+
+    res.status(500).json({
+      ok: false,
+      message: "خطا در بررسی حساب."
+    });
+  }
+});
+
+/* =========================
+   USER LOGOUT
+========================= */
+
+app.post("/logout", (req, res) => {
+  clearCookie(
+    res,
+    USER_COOKIE,
+    "Lax"
+  );
+
+  res.json({
+    ok: true,
+    message: "خروج انجام شد."
+  });
+});
+
+/* =========================
+   IDEAS
+========================= */
+
+app.post("/ideas", async (req, res) => {
+  try {
+    const session = getSession(req);
+
+    const title = String(
+      req.body.title || ""
+    ).trim();
+
+    const description = String(
+      req.body.description || ""
+    ).trim();
+
+    const solution = String(
+      req.body.solution || ""
+    ).trim();
+
+    const category = String(
+      req.body.category || ""
+    ).trim();
+
+    const participationType = String(
+      req.body.participationType || ""
+    ).trim();
+
+    if (!title) {
+      return res.status(400).json({
+        ok: false,
+        message: "عنوان
