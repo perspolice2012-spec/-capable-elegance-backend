@@ -12,290 +12,486 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
+
+// -----------------------------
+// ابزارهای کمکی
+// -----------------------------
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+async function initDatabase() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username TEXT NOT NULL,
+      phone TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ideas (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      solution TEXT,
+      category TEXT,
+      participation_type TEXT DEFAULT 'همکاری',
+      status TEXT DEFAULT 'open',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ads (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      contact TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+}
+
+// -----------------------------
+// صفحه اصلی
+// -----------------------------
 
 app.get("/", (req, res) => {
-  res.send(`
-<!DOCTYPE html>
+  res.send(`<!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>چیکام | هر ایده آغاز یک مسیر</title>
+<meta name="description" content="چیکام؛ هر ایده آغاز یک مسیر">
+<title>چیکام — هر ایده آغاز یک مسیر</title>
 
 <style>
 * {
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
   font-family: Tahoma, Arial, sans-serif;
-  background: #f4f7fb;
-  color: #172033;
+  background:
+    radial-gradient(circle at top right, rgba(61, 124, 255, 0.10), transparent 32%),
+    radial-gradient(circle at bottom left, rgba(0, 200, 150, 0.08), transparent 30%),
+    #f5f7fb;
+  color: #182230;
+  min-height: 100vh;
 }
 
-header {
-  background: linear-gradient(135deg, #172554, #2563eb);
-  color: white;
-  padding: 18px 6%;
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid #e5e9f0;
+}
+
+.topbar-inner {
+  max-width: 1120px;
+  margin: auto;
+  min-height: 70px;
+  padding: 0 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
 }
 
-.logo {
-  font-size: 27px;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-mark {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  color: white;
   font-weight: bold;
+  font-size: 20px;
+  background: linear-gradient(135deg, #315efb, #14b89a);
+  box-shadow: 0 8px 22px rgba(49,94,251,.20);
 }
 
-.header-text {
-  font-size: 13px;
-  opacity: .9;
+.brand-title {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.brand-subtitle {
+  font-size: 11px;
+  color: #7b8493;
+  margin-top: 3px;
+}
+
+main {
+  max-width: 1120px;
+  margin: auto;
+  padding: 28px 20px 60px;
 }
 
 .hero {
-  padding: 65px 20px;
-  text-align: center;
+  min-height: 340px;
+  border-radius: 30px;
+  padding: 54px 38px;
+  display: flex;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  color: white;
   background:
-    radial-gradient(circle at 20% 20%, rgba(59,130,246,.18), transparent 30%),
-    radial-gradient(circle at 80% 30%, rgba(14,165,233,.15), transparent 30%),
-    white;
+    radial-gradient(circle at 80% 20%, rgba(255,255,255,.20), transparent 25%),
+    linear-gradient(135deg, #172554, #2454c6 55%, #087f73);
+  box-shadow: 0 25px 60px rgba(31,52,99,.18);
+}
+
+.hero-content {
+  max-width: 720px;
+  position: relative;
+  z-index: 2;
+}
+
+.hero-label {
+  display: inline-block;
+  padding: 7px 13px;
+  border: 1px solid rgba(255,255,255,.25);
+  background: rgba(255,255,255,.10);
+  border-radius: 999px;
+  font-size: 12px;
+  margin-bottom: 18px;
 }
 
 .hero h1 {
+  font-size: clamp(32px, 5vw, 54px);
   margin: 0 0 15px;
-  font-size: clamp(30px, 6vw, 52px);
-  color: #172554;
+  line-height: 1.2;
 }
 
 .hero p {
-  max-width: 700px;
-  margin: auto;
+  margin: 0;
   line-height: 2;
-  color: #526071;
-  font-size: 17px;
+  color: rgba(255,255,255,.88);
+  max-width: 680px;
+  font-size: 16px;
 }
 
-.hero-badge {
-  display: inline-block;
-  margin-bottom: 18px;
-  padding: 8px 16px;
-  border-radius: 30px;
-  background: #e0ecff;
-  color: #1d4ed8;
-  font-size: 13px;
-  font-weight: bold;
+.hero-symbol {
+  position: absolute;
+  left: 5%;
+  bottom: -55px;
+  width: 230px;
+  height: 230px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 50%;
 }
 
-.container {
-  width: min(1100px, 92%);
-  margin: 35px auto;
+.hero-symbol::before,
+.hero-symbol::after {
+  content: "";
+  position: absolute;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 50%;
+}
+
+.hero-symbol::before {
+  inset: 28px;
+}
+
+.hero-symbol::after {
+  inset: 65px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  margin-top: 22px;
 }
 
 .section {
-  background: white;
-  border-radius: 20px;
+  background: rgba(255,255,255,.96);
+  border: 1px solid #e6eaf1;
+  border-radius: 24px;
   padding: 25px;
-  margin-bottom: 25px;
-  box-shadow: 0 8px 30px rgba(15,23,42,.07);
+  box-shadow: 0 12px 35px rgba(20,30,50,.06);
 }
 
-.section-title {
-  margin-top: 0;
-  color: #172554;
+.section.full {
+  margin-top: 22px;
 }
 
-.ad-section {
-  background: linear-gradient(135deg, #fff7ed, #ffffff);
-  border: 1px solid #fed7aa;
+.section h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
 }
 
-.ad-card {
-  border-radius: 16px;
-  padding: 20px;
-  background: white;
-  border: 1px solid #e5e7eb;
-}
-
-.ad-label {
-  color: #ea580c;
-  font-weight: bold;
+.section-desc {
+  color: #778092;
   font-size: 13px;
-}
-
-.ad-button {
-  border: none;
-  background: #f97316;
-  color: white;
-  padding: 11px 20px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 14px;
+  line-height: 1.9;
+  margin-bottom: 20px;
 }
 
 .auth-box {
   max-width: 520px;
-  margin: 0 auto;
+  margin: auto;
 }
 
-.auth-inner {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 18px;
-  padding: 24px;
-}
-
-.auth-title {
-  text-align: center;
-  margin-top: 0;
-  color: #172554;
-}
-
-.auth-subtitle {
-  text-align: center;
-  color: #64748b;
-  font-size: 13px;
-  margin-bottom: 20px;
+.input-group {
+  position: relative;
+  margin-bottom: 12px;
 }
 
 input,
 textarea,
 select {
   width: 100%;
-  padding: 12px 14px;
-  margin: 7px 0;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
+  border: 1px solid #dfe4ec;
+  background: #fbfcfe;
+  border-radius: 13px;
+  padding: 14px 15px;
+  font-size: 14px;
+  outline: none;
+  transition: .2s;
+  color: #182230;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: #4268f5;
+  box-shadow: 0 0 0 4px rgba(66,104,245,.09);
   background: white;
-  font-family: inherit;
-  font-size: 14px;
-}
-
-textarea {
-  min-height: 100px;
-  resize: vertical;
-}
-
-.main-button {
-  width: 100%;
-  border: none;
-  border-radius: 10px;
-  padding: 12px 20px;
-  background: #2563eb;
-  color: white;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 14px;
-  margin-top: 7px;
-}
-
-.main-button:hover {
-  opacity: .9;
-}
-
-.register-link {
-  width: 100%;
-  border: none;
-  background: transparent;
-  color: #2563eb;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 14px;
-  padding: 14px 5px 5px;
-}
-
-.register-link:hover {
-  text-decoration: underline;
-}
-
-.register-area {
-  display: none;
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid #e2e8f0;
-}
-
-.register-title {
-  color: #172554;
-  font-size: 16px;
-  margin-top: 0;
-}
-
-.cancel-link {
-  width: 100%;
-  border: none;
-  background: transparent;
-  color: #64748b;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 13px;
-  padding: 12px 5px 0;
 }
 
 .password-wrap {
   position: relative;
+  margin-bottom: 14px;
 }
 
 .password-wrap input {
   padding-left: 48px;
 }
 
-.eye {
+.eye-btn {
   position: absolute;
-  left: 8px;
-  top: 8px;
-  width: 38px;
-  height: 38px;
-  padding: 0;
+  left: 7px;
+  top: 7px;
+  width: 40px;
+  height: 40px;
+  border: 0;
   background: transparent;
-  color: #475569;
-  font-size: 19px;
+  border-radius: 10px;
+  font-size: 18px;
+}
+
+.auth-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.main-button,
+.secondary-button,
+.ad-button {
+  border: 0;
+  border-radius: 13px;
+  padding: 13px 16px;
+  font-weight: bold;
+  font-size: 14px;
+  transition: .2s;
+}
+
+.main-button {
+  color: white;
+  background: linear-gradient(135deg, #315efb, #4268f5);
+}
+
+.secondary-button {
+  color: #2448bb;
+  background: #edf2ff;
+}
+
+.ad-button {
+  width: 100%;
+  color: white;
+  background: linear-gradient(135deg, #0b8f78, #13b58f);
+}
+
+.main-button:hover,
+.secondary-button:hover,
+.ad-button:hover {
+  transform: translateY(-1px);
+  filter: brightness(.98);
 }
 
 .message {
-  margin-top: 10px;
   min-height: 22px;
+  margin-top: 12px;
   font-size: 13px;
-  text-align: center;
+  color: #667085;
 }
 
-.idea {
-  border: 1px solid #e2e8f0;
-  border-radius: 15px;
+.message.success {
+  color: #16805c;
+}
+
+.message.error {
+  color: #c43b48;
+}
+
+.ad-card {
+  border-radius: 18px;
+  padding: 20px;
+  background: linear-gradient(135deg, #f0fdf9, #f4f7ff);
+  border: 1px solid #dfeae8;
+}
+
+.ad-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.idea-form {
+  display: grid;
+  gap: 12px;
+}
+
+.idea-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+textarea {
+  min-height: 105px;
+  resize: vertical;
+}
+
+.ideas-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.idea-card {
+  border: 1px solid #e6eaf1;
+  border-radius: 18px;
   padding: 18px;
-  margin-top: 12px;
   background: #fff;
 }
 
-.idea h3 {
-  margin-top: 0;
-  color: #1d4ed8;
+.idea-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: start;
+}
+
+.idea-title {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.badge {
+  display: inline-flex;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.badge.green {
+  background: #e7f8f1;
+  color: #16805c;
+}
+
+.badge.yellow {
+  background: #fff6db;
+  color: #9a7200;
+}
+
+.badge.red {
+  background: #ffe9eb;
+  color: #c43b48;
+}
+
+.idea-text {
+  color: #687386;
+  line-height: 1.9;
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+.empty {
+  text-align: center;
+  padding: 35px 15px;
+  color: #8992a1;
+  border: 1px dashed #dce1e9;
+  border-radius: 17px;
 }
 
 footer {
   text-align: center;
-  padding: 30px 15px;
-  color: #64748b;
-  font-size: 13px;
+  color: #8992a1;
+  font-size: 12px;
+  padding: 30px 20px;
 }
 
-@media (max-width: 700px) {
-  header {
-    padding: 15px 5%;
+@media (max-width: 760px) {
+  .grid,
+  .idea-grid {
+    grid-template-columns: 1fr;
   }
 
   .hero {
-    padding: 45px 18px;
+    min-height: 300px;
+    padding: 38px 25px;
+    border-radius: 24px;
+  }
+
+  .hero h1 {
+    font-size: 34px;
   }
 
   .section {
-    padding: 18px;
+    padding: 20px;
   }
 
-  .auth-inner {
-    padding: 18px;
+  .topbar-inner {
+    min-height: 62px;
   }
 }
 </style>
@@ -303,217 +499,172 @@ footer {
 
 <body>
 
-<header>
-  <div class="logo">چیکام</div>
-  <div class="header-text">هر ایده آغاز یک مسیر</div>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-mark">چ</div>
+      <div>
+        <div class="brand-title">چیکام</div>
+        <div class="brand-subtitle">هر ایده آغاز یک مسیر</div>
+      </div>
+    </div>
+  </div>
 </header>
 
+<main>
+
 <section class="hero">
-  <div class="hero-badge">فضای ایده‌ها و همکاری</div>
-
-  <h1>هر ایده آغاز یک مسیر</h1>
-
-  <p>
-    ایده‌ات را مطرح کن، آن را توسعه بده و با دیگران برای ساختنش همراه شو.
-    چیکام برای تبدیل ایده‌های ساده به مسیرهای واقعی ساخته می‌شود.
-  </p>
+  <div class="hero-content">
+    <div class="hero-label">فضای ایده‌ها و همکاری</div>
+    <h1>هر ایده آغاز یک مسیر</h1>
+    <p>
+      ایده‌ات را مطرح کن، آن را توسعه بده و با دیگران
+      برای ساختنش همراه شو. چیکام برای تبدیل ایده‌های
+      ساده به مسیرهای واقعی ساخته می‌شود.
+    </p>
+  </div>
+  <div class="hero-symbol"></div>
 </section>
 
-<div class="container">
+<div class="grid">
 
-<section class="section ad-section">
-
-  <h2 class="section-title">📢 تبلیغات کاربران</h2>
-
-  <div class="ad-card">
-
-    <div class="ad-label">فضای تبلیغاتی چیکام</div>
-
-    <h3>محصول یا خدمات خود را معرفی کنید</h3>
-
-    <p>
-      این بخش برای تبلیغات کاربران و معرفی محصولات، خدمات و پروژه‌ها در نظر گرفته شده است.
-    </p>
-
-    <button
-      class="ad-button"
-      onclick="alert('بخش ثبت تبلیغات به‌زودی فعال می‌شود')">
-      ثبت تبلیغ
-    </button>
-
+<section class="section">
+  <h2>📢 تبلیغات کاربران</h2>
+  <div class="section-desc">
+    فضای معرفی محصولات، خدمات و پروژه‌ها در چیکام.
   </div>
 
+  <div class="ad-card">
+    <div class="ad-icon">📣</div>
+    <strong>محصول یا خدمات خود را معرفی کنید</strong>
+    <p class="section-desc">
+      این بخش برای تبلیغات کاربران و معرفی محصولات،
+      خدمات و پروژه‌ها در نظر گرفته شده است.
+    </p>
+    <button class="ad-button" onclick="showAdMessage()">
+      ثبت تبلیغ
+    </button>
+  </div>
+
+  <div id="adMessage" class="message"></div>
 </section>
 
 <section class="section">
-
   <div class="auth-box">
 
-    <div class="auth-inner">
+    <h2>حساب کاربری</h2>
 
-      <h2 class="auth-title">حساب کاربری</h2>
+    <div class="section-desc">
+      برای ورود یا ثبت‌نام، از همین دو کادر استفاده کنید.
+    </div>
 
-      <div class="auth-subtitle">
-        برای ورود یا ایجاد حساب از همین بخش استفاده کنید.
-      </div>
-
+    <!-- فقط دو کادر -->
+    <div class="input-group">
       <input
-        id="loginUsername"
-        placeholder="نام کاربری">
+        id="authUsername"
+        type="text"
+        placeholder="نام کاربری"
+        autocomplete="username"
+      >
+    </div>
 
-      <div class="password-wrap">
-
-        <input
-          id="loginPassword"
-          type="password"
-          placeholder="رمز عبور">
-
-        <button
-          class="eye"
-          type="button"
-          onclick="togglePassword('loginPassword', this)">
-          👁️
-        </button>
-
-      </div>
-
+    <div class="password-wrap">
+      <input
+        id="authPassword"
+        type="password"
+        placeholder="رمز عبور"
+        autocomplete="current-password"
+      >
       <button
-        class="main-button"
-        onclick="loginUser()">
+        class="eye-btn"
+        type="button"
+        onclick="togglePassword('authPassword', this)"
+        aria-label="نمایش رمز عبور"
+      >👁️</button>
+    </div>
+
+    <!-- ورود و ثبت نام زیر دو کادر -->
+    <div class="auth-actions">
+      <button class="main-button" onclick="loginUser()">
         ورود
       </button>
 
-      <button
-        class="register-link"
-        type="button"
-        onclick="showRegister()">
+      <button class="secondary-button" onclick="registerUser()">
         ثبت‌نام
       </button>
-
-      <div
-        id="registerArea"
-        class="register-area">
-
-        <h3 class="register-title">
-          ایجاد حساب جدید
-        </h3>
-
-        <input
-          id="regPhone"
-          placeholder="شماره تلفن">
-
-        <div class="password-wrap">
-
-          <input
-            id="regPassword"
-            type="password"
-            placeholder="تکرار رمز عبور برای حساب جدید">
-
-          <button
-            class="eye"
-            type="button"
-            onclick="togglePassword('regPassword', this)">
-            👁️
-          </button>
-
-        </div>
-
-        <button
-          class="main-button"
-          onclick="registerUser()">
-          ایجاد حساب
-        </button>
-
-        <button
-          class="cancel-link"
-          type="button"
-          onclick="hideRegister()">
-          بازگشت به ورود
-        </button>
-
-      </div>
-
-      <div
-        id="authMessage"
-        class="message">
-      </div>
-
     </div>
 
-  </div>
-
-</section>
-
-<section class="section">
-
-  <h2 class="section-title">💡 ثبت ایده</h2>
-
-  <div>
-
-    <input
-      id="ideaTitle"
-      placeholder="عنوان ایده">
-
-    <textarea
-      id="ideaDescription"
-      placeholder="توضیح ایده"></textarea>
-
-    <textarea
-      id="ideaSolution"
-      placeholder="راه‌حل یا پیشنهاد"></textarea>
-
-    <input
-      id="ideaCategory"
-      placeholder="دسته‌بندی">
-
-    <select id="ideaParticipation">
-
-      <option value="همکاری">
-        نوع مشارکت: همکاری
-      </option>
-
-      <option value="سرمایه‌گذاری">
-        سرمایه‌گذاری
-      </option>
-
-      <option value="مشاوره">
-        مشاوره
-      </option>
-
-      <option value="اجرا">
-        اجرا
-      </option>
-
-    </select>
-
-    <button
-      class="main-button"
-      onclick="createIdea()">
-      ثبت ایده
-    </button>
-
-    <div
-      id="ideaMessage"
-      class="message">
-    </div>
+    <div id="authMessage" class="message"></div>
 
   </div>
-
-</section>
-
-<section class="section">
-
-  <h2 class="section-title">
-    🌱 ایده‌های چیکام
-  </h2>
-
-  <div id="ideasList">
-    در حال دریافت ایده‌ها...
-  </div>
-
 </section>
 
 </div>
+
+<section class="section full">
+  <h2>💡 ثبت ایده</h2>
+
+  <div class="section-desc">
+    ایده خود را ثبت کنید تا در فضای چیکام قرار بگیرد.
+  </div>
+
+  <div class="idea-form">
+
+    <input
+      id="ideaTitle"
+      type="text"
+      placeholder="عنوان ایده"
+    >
+
+    <textarea
+      id="ideaDescription"
+      placeholder="توضیح ایده"
+    ></textarea>
+
+    <textarea
+      id="ideaSolution"
+      placeholder="راه‌حل یا پیشنهاد"
+    ></textarea>
+
+    <div class="idea-grid">
+
+      <input
+        id="ideaCategory"
+        type="text"
+        placeholder="دسته‌بندی"
+      >
+
+      <select id="ideaParticipation">
+        <option value="همکاری">نوع مشارکت: همکاری</option>
+        <option value="سرمایه‌گذاری">سرمایه‌گذاری</option>
+        <option value="مشاوره">مشاوره</option>
+        <option value="توسعه">توسعه</option>
+        <option value="سایر">سایر</option>
+      </select>
+
+    </div>
+
+    <button class="main-button" onclick="createIdea()">
+      ثبت ایده
+    </button>
+
+    <div id="ideaMessage" class="message"></div>
+
+  </div>
+</section>
+
+<section class="section full">
+  <h2>🌱 ایده‌های چیکام</h2>
+  <div class="section-desc">
+    ایده‌های ثبت‌شده در این بخش نمایش داده می‌شوند.
+  </div>
+
+  <div id="ideasList" class="ideas-list">
+    <div class="empty">در حال بارگذاری ایده‌ها...</div>
+  </div>
+</section>
+
+</main>
 
 <footer>
   چیکام — هر ایده آغاز یک مسیر
@@ -522,152 +673,141 @@ footer {
 <script>
 
 function togglePassword(id, button) {
-
   const input = document.getElementById(id);
 
   if (input.type === "password") {
-
     input.type = "text";
     button.textContent = "🙈";
-
   } else {
-
     input.type = "password";
     button.textContent = "👁️";
-
   }
-
 }
 
-function showRegister() {
-
-  document.getElementById("registerArea").style.display = "block";
-
-  document.getElementById("regPhone").focus();
-
-}
-
-function hideRegister() {
-
-  document.getElementById("registerArea").style.display = "none";
-
-}
-
-async function registerUser() {
-
-  const username =
-    document.getElementById("loginUsername").value.trim();
-
-  const phone =
-    document.getElementById("regPhone").value.trim();
-
-  const password =
-    document.getElementById("regPassword").value;
-
-  const message =
-    document.getElementById("authMessage");
-
-  if (!username || !phone || !password) {
-
-    message.textContent =
-      "برای ثبت‌نام، نام کاربری، شماره تلفن و رمز عبور را وارد کنید.";
-
-    return;
-  }
-
-  try {
-
-    const response = await fetch("/register", {
-
-      method: "POST",
-
-      headers: {
-        "Content-Type": "application/json"
-      },
-
-      body: JSON.stringify({
-        username,
-        phone,
-        password
-      })
-
-    });
-
-    const data = await response.json();
-
-    message.textContent =
-      data.message || "عملیات انجام شد.";
-
-    if (response.ok) {
-
-      document.getElementById("regPhone").value = "";
-      document.getElementById("regPassword").value = "";
-
-      hideRegister();
-
-    }
-
-  } catch (error) {
-
-    message.textContent =
-      "ارتباط با سرور برقرار نشد.";
-
-  }
-
+function setMessage(id, text, type = "") {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = "message " + type;
 }
 
 async function loginUser() {
-
   const username =
-    document.getElementById("loginUsername").value.trim();
+    document.getElementById("authUsername").value.trim();
 
   const password =
-    document.getElementById("loginPassword").value;
-
-  const message =
-    document.getElementById("authMessage");
+    document.getElementById("authPassword").value;
 
   if (!username || !password) {
-
-    message.textContent =
-      "نام کاربری و رمز عبور را وارد کنید.";
-
+    setMessage(
+      "authMessage",
+      "نام کاربری و رمز عبور را وارد کنید.",
+      "error"
+    );
     return;
   }
 
   try {
-
     const response = await fetch("/login", {
-
       method: "POST",
-
       headers: {
         "Content-Type": "application/json"
       },
-
       body: JSON.stringify({
         username,
         password
       })
-
     });
 
     const data = await response.json();
 
-    message.textContent =
-      data.message || "عملیات انجام شد.";
+    if (!response.ok) {
+      setMessage(
+        "authMessage",
+        data.message || "ورود انجام نشد.",
+        "error"
+      );
+      return;
+    }
+
+    setMessage(
+      "authMessage",
+      "ورود با موفقیت انجام شد.",
+      "success"
+    );
 
   } catch (error) {
+    setMessage(
+      "authMessage",
+      "ارتباط با سرور برقرار نشد.",
+      "error"
+    );
+  }
+}
 
-    message.textContent =
-      "ارتباط با سرور برقرار نشد.";
+async function registerUser() {
+  const username =
+    document.getElementById("authUsername").value.trim();
 
+  const password =
+    document.getElementById("authPassword").value;
+
+  if (!username || !password) {
+    setMessage(
+      "authMessage",
+      "ابتدا نام کاربری و رمز عبور را وارد کنید.",
+      "error"
+    );
+    return;
   }
 
+  const phone = prompt(
+    "برای تکمیل ثبت‌نام، شماره تلفن خود را وارد کنید:"
+  );
+
+  if (!phone || !phone.trim()) {
+    return;
+  }
+
+  try {
+    const response = await fetch("/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        username,
+        phone: phone.trim(),
+        password
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      setMessage(
+        "authMessage",
+        data.message || "ثبت‌نام انجام نشد.",
+        "error"
+      );
+      return;
+    }
+
+    setMessage(
+      "authMessage",
+      "حساب شما با موفقیت ایجاد شد. اکنون می‌توانید وارد شوید.",
+      "success"
+    );
+
+  } catch (error) {
+    setMessage(
+      "authMessage",
+      "ارتباط با سرور برقرار نشد.",
+      "error"
+    );
+  }
 }
 
 async function createIdea() {
-
   const title =
     document.getElementById("ideaTitle").value.trim();
 
@@ -680,145 +820,131 @@ async function createIdea() {
   const category =
     document.getElementById("ideaCategory").value.trim();
 
-  const participation_type =
+  const participation =
     document.getElementById("ideaParticipation").value;
 
-  const message =
-    document.getElementById("ideaMessage");
-
-  if (!title || !description) {
-
-    message.textContent =
-      "عنوان و توضیح ایده الزامی است.";
-
+  if (!title) {
+    setMessage(
+      "ideaMessage",
+      "عنوان ایده را وارد کنید.",
+      "error"
+    );
     return;
   }
 
   try {
-
     const response = await fetch("/ideas", {
-
       method: "POST",
-
       headers: {
         "Content-Type": "application/json"
       },
-
       body: JSON.stringify({
         title,
         description,
         solution,
         category,
-        participation_type
+        participation_type: participation
       })
-
     });
 
     const data = await response.json();
 
-    message.textContent =
-      data.message || "ایده ثبت شد.";
-
-    if (response.ok) {
-
-      document.getElementById("ideaTitle").value = "";
-      document.getElementById("ideaDescription").value = "";
-      document.getElementById("ideaSolution").value = "";
-      document.getElementById("ideaCategory").value = "";
-
-      loadIdeas();
-
+    if (!response.ok) {
+      setMessage(
+        "ideaMessage",
+        data.message || "ثبت ایده انجام نشد.",
+        "error"
+      );
+      return;
     }
 
+    setMessage(
+      "ideaMessage",
+      "ایده با موفقیت ثبت شد.",
+      "success"
+    );
+
+    document.getElementById("ideaTitle").value = "";
+    document.getElementById("ideaDescription").value = "";
+    document.getElementById("ideaSolution").value = "";
+    document.getElementById("ideaCategory").value = "";
+
+    loadIdeas();
+
   } catch (error) {
-
-    message.textContent =
-      "ارتباط با سرور برقرار نشد.";
-
+    setMessage(
+      "ideaMessage",
+      "ارتباط با سرور برقرار نشد.",
+      "error"
+    );
   }
-
 }
 
 async function loadIdeas() {
-
-  const list =
-    document.getElementById("ideasList");
+  const list = document.getElementById("ideasList");
 
   try {
+    const response = await fetch("/ideas");
+    const ideas = await response.json();
 
-    const response =
-      await fetch("/ideas");
-
-    const ideas =
-      await response.json();
-
-    if (!Array.isArray(ideas) || ideas.length === 0) {
-
-      list.textContent =
-        "هنوز ایده‌ای ثبت نشده است.";
-
+    if (!ideas.length) {
+      list.innerHTML =
+        '<div class="empty">هنوز ایده‌ای ثبت نشده است.</div>';
       return;
     }
 
     list.innerHTML = "";
 
-    ideas.forEach(function(idea) {
+    ideas.forEach((idea) => {
+      const card = document.createElement("div");
+      card.className = "idea-card";
 
-      const div =
-        document.createElement("div");
+      const top = document.createElement("div");
+      top.className = "idea-top";
 
-      div.className = "idea";
+      const title = document.createElement("div");
+      title.className = "idea-title";
+      title.textContent = idea.title || "بدون عنوان";
 
-      const title =
-        document.createElement("h3");
+      const badge = document.createElement("span");
+      badge.className = "badge green";
+      badge.textContent =
+        idea.participation_type || "همکاری";
 
-      title.textContent =
-        idea.title || "بدون عنوان";
+      top.appendChild(title);
+      top.appendChild(badge);
 
-      const description =
-        document.createElement("p");
+      const text = document.createElement("div");
+      text.className = "idea-text";
+      text.textContent =
+        idea.description || "توضیحی برای این ایده ثبت نشده است.";
 
-      description.textContent =
-        idea.description || "";
-
-      div.appendChild(title);
-      div.appendChild(description);
-
-      if (idea.solution) {
-
-        const solution =
-          document.createElement("p");
-
-        solution.textContent =
-          "راه‌حل: " + idea.solution;
-
-        div.appendChild(solution);
-
-      }
+      card.appendChild(top);
+      card.appendChild(text);
 
       if (idea.category) {
-
-        const category =
-          document.createElement("p");
-
+        const category = document.createElement("div");
+        category.className = "idea-text";
         category.textContent =
           "دسته‌بندی: " + idea.category;
-
-        div.appendChild(category);
-
+        card.appendChild(category);
       }
 
-      list.appendChild(div);
-
+      list.appendChild(card);
     });
 
   } catch (error) {
-
-    list.textContent =
-      "دریافت ایده‌ها با مشکل مواجه شد.";
-
+    list.innerHTML =
+      '<div class="empty">امکان دریافت ایده‌ها وجود ندارد.</div>';
   }
+}
 
+function showAdMessage() {
+  setMessage(
+    "adMessage",
+    "بخش ثبت تبلیغات در مرحله بعد فعال می‌شود.",
+    ""
+  );
 }
 
 loadIdeas();
@@ -826,182 +952,165 @@ loadIdeas();
 </script>
 
 </body>
-</html>
-  `);
+</html>`);
 });
 
-app.get("/db-test", async (req, res) => {
-
-  try {
-
-    const result =
-      await pool.query("SELECT NOW() AS time");
-
-    res.json({
-      message: "اتصال به PostgreSQL موفق است",
-      time: result.rows[0].time
-    });
-
-  } catch (error) {
-
-    res.status(500).json({
-      message: "خطا در اتصال به PostgreSQL",
-      error: error.message
-    });
-
-  }
-
-});
+// -----------------------------
+// ثبت نام کاربر
+// -----------------------------
 
 app.post("/register", async (req, res) => {
-
   try {
-
-    const {
-      username,
-      phone,
-      password
-    } = req.body;
+    const { username, phone, password } = req.body;
 
     if (!username || !phone || !password) {
-
       return res.status(400).json({
-        message: "همه فیلدها الزامی هستند."
+        message: "نام کاربری، شماره تلفن و رمز عبور الزامی است."
       });
-
     }
 
-    const existing =
-      await pool.query(
-        "SELECT id FROM users WHERE username = $1",
-        [username]
-      );
+    const existingPhone = await pool.query(
+      "SELECT id FROM users WHERE phone = $1 LIMIT 1",
+      [phone]
+    );
 
-    if (existing.rows.length > 0) {
-
-      return res.status(400).json({
-        message: "این نام کاربری قبلاً ثبت شده است."
+    if (existingPhone.rows.length) {
+      return res.status(409).json({
+        message: "این شماره تلفن قبلاً ثبت شده است."
       });
+    }
 
+    const existingUsername = await pool.query(
+      "SELECT id FROM users WHERE username = $1 LIMIT 1",
+      [username]
+    );
+
+    if (existingUsername.rows.length) {
+      return res.status(409).json({
+        message: "این نام کاربری قبلاً استفاده شده است."
+      });
     }
 
     const hashedPassword =
-      await bcrypt.hash(password, 10);
+      await bcrypt.hash(password, 12);
 
     await pool.query(
-      "INSERT INTO users (username, phone, password) VALUES ($1, $2, $3)",
-      [
-        username,
-        phone,
-        hashedPassword
-      ]
+      `
+      INSERT INTO users
+      (username, phone, password)
+      VALUES ($1, $2, $3)
+      `,
+      [username, phone, hashedPassword]
     );
 
     res.json({
-      message: "ثبت‌نام با موفقیت انجام شد."
+      message: "حساب کاربری با موفقیت ایجاد شد."
     });
 
   } catch (error) {
+    console.error("REGISTER ERROR:", error);
 
     res.status(500).json({
-      message: "خطا در ثبت‌نام",
-      error: error.message
+      message: "خطا در ثبت‌نام."
     });
-
   }
-
 });
 
+// -----------------------------
+// ورود کاربر
+// -----------------------------
+
 app.post("/login", async (req, res) => {
-
   try {
-
-    const {
-      username,
-      password
-    } = req.body;
+    const { username, password } = req.body;
 
     if (!username || !password) {
-
       return res.status(400).json({
-        message: "نام کاربری و رمز عبور الزامی است."
+        message: "نام کاربری و رمز عبور را وارد کنید."
       });
-
     }
 
-    const result =
-      await pool.query(
-        "SELECT * FROM users WHERE username = $1",
-        [username]
-      );
+    const result = await pool.query(
+      `
+      SELECT id, username, password
+      FROM users
+      WHERE username = $1
+      LIMIT 1
+      `,
+      [username]
+    );
 
-    if (result.rows.length === 0) {
-
+    if (!result.rows.length) {
       return res.status(401).json({
         message: "نام کاربری یا رمز عبور اشتباه است."
       });
-
     }
 
-    const user =
-      result.rows[0];
+    const user = result.rows[0];
 
-    const validPassword =
-      await bcrypt.compare(
-        password,
-        user.password
-      );
+    const valid =
+      await bcrypt.compare(password, user.password);
 
-    if (!validPassword) {
-
+    if (!valid) {
       return res.status(401).json({
         message: "نام کاربری یا رمز عبور اشتباه است."
       });
-
     }
 
     res.json({
-      message: "ورود با موفقیت انجام شد.",
-      username: user.username
+      message: "ورود موفق بود.",
+      user: {
+        id: user.id,
+        username: user.username
+      }
     });
 
   } catch (error) {
+    console.error("LOGIN ERROR:", error);
 
     res.status(500).json({
-      message: "خطا در ورود",
-      error: error.message
+      message: "خطا در ورود."
     });
-
   }
-
 });
 
+// -----------------------------
+// دریافت ایده‌ها
+// -----------------------------
+
 app.get("/ideas", async (req, res) => {
-
   try {
-
-    const result =
-      await pool.query(
-        "SELECT id, title, description, solution, category, participation_type, status, created_at FROM ideas ORDER BY id DESC"
-      );
+    const result = await pool.query(`
+      SELECT
+        id,
+        title,
+        description,
+        solution,
+        category,
+        participation_type,
+        status,
+        created_at
+      FROM ideas
+      ORDER BY id DESC
+    `);
 
     res.json(result.rows);
 
   } catch (error) {
+    console.error("IDEAS GET ERROR:", error);
 
     res.status(500).json({
-      message: "خطا در دریافت ایده‌ها",
-      error: error.message
+      message: "خطا در دریافت ایده‌ها."
     });
-
   }
-
 });
 
+// -----------------------------
+// ثبت ایده
+// -----------------------------
+
 app.post("/ideas", async (req, res) => {
-
   try {
-
     const {
       title,
       description,
@@ -1010,47 +1119,425 @@ app.post("/ideas", async (req, res) => {
       participation_type
     } = req.body;
 
-    if (!title || !description) {
-
+    if (!title) {
       return res.status(400).json({
-        message: "عنوان و توضیح ایده الزامی است."
+        message: "عنوان ایده الزامی است."
       });
-
     }
 
-    const result =
-      await pool.query(
-        `INSERT INTO ideas
-        (title, description, solution, category, participation_type, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, 'open', CURRENT_DATE)
-        RETURNING id`,
-        [
-          title,
-          description,
-          solution || "",
-          category || "",
-          participation_type || ""
-        ]
-      );
+    await pool.query(
+      `
+      INSERT INTO ideas
+      (
+        title,
+        description,
+        solution,
+        category,
+        participation_type,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, 'open')
+      `,
+      [
+        title,
+        description || "",
+        solution || "",
+        category || "",
+        participation_type || "همکاری"
+      ]
+    );
 
     res.json({
-      message: "ایده با موفقیت ثبت شد.",
-      id: result.rows[0].id
+      message: "ایده با موفقیت ثبت شد."
     });
 
   } catch (error) {
+    console.error("IDEA POST ERROR:", error);
 
     res.status(500).json({
-      message: "خطا در ثبت ایده",
-      error: error.message
+      message: "خطا در ثبت ایده."
+    });
+  }
+});
+
+// -----------------------------
+// تست اتصال PostgreSQL
+// -----------------------------
+
+app.get("/db-test", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT NOW() AS time"
+    );
+
+    res.json({
+      success: true,
+      database: "connected",
+      time: result.rows[0].time
     });
 
+  } catch (error) {
+    console.error("DB TEST ERROR:", error);
+
+    res.status(500).json({
+      success: false,
+      database: "error",
+      message: error.message
+    });
+  }
+});
+
+// -----------------------------
+// پنل اختصاصی مدیر
+// -----------------------------
+// ورود مدیر در صفحه اصلی نمایش داده نمی‌شود.
+// مدیر از /admin وارد می‌شود.
+
+app.get("/admin", (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ورود مدیر — چیکام</title>
+
+<style>
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #101828;
+  font-family: Tahoma, Arial, sans-serif;
+  padding: 20px;
+}
+
+.admin-box {
+  width: min(420px, 100%);
+  background: #fff;
+  border-radius: 24px;
+  padding: 30px;
+  box-shadow: 0 25px 70px rgba(0,0,0,.25);
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+p {
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 7px 0;
+  padding: 14px;
+  border: 1px solid #dfe4ec;
+  border-radius: 12px;
+  outline: none;
+}
+
+button {
+  width: 100%;
+  margin-top: 10px;
+  padding: 14px;
+  border: 0;
+  border-radius: 12px;
+  background: #182b55;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#message {
+  margin-top: 12px;
+  color: #c43b48;
+  font-size: 13px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="admin-box">
+  <h1>🔐 مدیریت چیکام</h1>
+  <p>
+    این بخش فقط برای مدیر سایت است.
+  </p>
+
+  <input
+    id="username"
+    placeholder="نام کاربری مدیر"
+  >
+
+  <input
+    id="password"
+    type="password"
+    placeholder="رمز عبور مدیر"
+  >
+
+  <button onclick="adminLogin()">
+    ورود به مدیریت
+  </button>
+
+  <div id="message"></div>
+</div>
+
+<script>
+async function adminLogin() {
+  const username =
+    document.getElementById("username").value.trim();
+
+  const password =
+    document.getElementById("password").value;
+
+  const message =
+    document.getElementById("message");
+
+  if (!username || !password) {
+    message.textContent =
+      "نام کاربری و رمز عبور را وارد کنید.";
+    return;
   }
 
+  try {
+    const response = await fetch("/admin/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        username,
+        password
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      message.textContent =
+        data.message || "ورود مدیر انجام نشد.";
+      return;
+    }
+
+    window.location.href = "/admin/panel";
+
+  } catch (error) {
+    message.textContent =
+      "ارتباط با سرور برقرار نشد.";
+  }
+}
+</script>
+
+</body>
+</html>`);
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(
-    "Chikam server running on port " + PORT
-  );
+// -----------------------------
+// ورود مدیر
+// -----------------------------
+
+app.post("/admin/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    const adminUsername =
+      process.env.ADMIN_USERNAME;
+
+    const adminPassword =
+      process.env.ADMIN_PASSWORD;
+
+    if (!adminUsername || !adminPassword) {
+      return res.status(500).json({
+        message:
+          "اطلاعات مدیر در Variables سرور تنظیم نشده است."
+      });
+    }
+
+    if (
+      username !== adminUsername ||
+      password !== adminPassword
+    ) {
+      return res.status(401).json({
+        message: "اطلاعات ورود مدیر صحیح نیست."
+      });
+    }
+
+    res.json({
+      success: true
+    });
+
+  } catch (error) {
+    console.error("ADMIN LOGIN ERROR:", error);
+
+    res.status(500).json({
+      message: "خطا در ورود مدیر."
+    });
+  }
 });
+
+// -----------------------------
+// پنل مدیریت
+// -----------------------------
+
+app.get("/admin/panel", async (req, res) => {
+  try {
+    const users =
+      await pool.query(
+        "SELECT COUNT(*)::int AS count FROM users"
+      );
+
+    const ideas =
+      await pool.query(
+        "SELECT COUNT(*)::int AS count FROM ideas"
+      );
+
+    const ads =
+      await pool.query(
+        "SELECT COUNT(*)::int AS count FROM ads"
+      );
+
+    res.send(`<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>پنل مدیریت چیکام</title>
+
+<style>
+body {
+  margin: 0;
+  background: #f5f7fb;
+  color: #182230;
+  font-family: Tahoma, Arial, sans-serif;
+}
+
+header {
+  background: #101828;
+  color: white;
+  padding: 22px;
+}
+
+main {
+  max-width: 1100px;
+  margin: auto;
+  padding: 25px 20px;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.card {
+  background: white;
+  border: 1px solid #e5e9f0;
+  border-radius: 20px;
+  padding: 25px;
+}
+
+.number {
+  font-size: 35px;
+  font-weight: bold;
+  margin-top: 10px;
+}
+
+.green {
+  border-top: 4px solid #16a36f;
+}
+
+.yellow {
+  border-top: 4px solid #e0a800;
+}
+
+.blue {
+  border-top: 4px solid #315efb;
+}
+
+@media (max-width: 700px) {
+  .stats {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <strong>🔐 پنل مدیریت چیکام</strong>
+</header>
+
+<main>
+
+<h2>نمای کلی سایت</h2>
+
+<div class="stats">
+
+<div class="card blue">
+  <div>کاربران</div>
+  <div class="number">
+    ${users.rows[0].count}
+  </div>
+</div>
+
+<div class="card green">
+  <div>ایده‌ها</div>
+  <div class="number">
+    ${ideas.rows[0].count}
+  </div>
+</div>
+
+<div class="card yellow">
+  <div>تبلیغات</div>
+  <div class="number">
+    ${ads.rows[0].count}
+  </div>
+</div>
+
+</div>
+
+</main>
+
+</body>
+</html>`);
+
+  } catch (error) {
+    console.error("ADMIN PANEL ERROR:", error);
+
+    res.status(500).send(
+      "خطا در بارگذاری پنل مدیریت."
+    );
+  }
+});
+
+// -----------------------------
+// شروع سرور
+// -----------------------------
+
+async function startServer() {
+  try {
+    await initDatabase();
+
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(
+        "CHIKAM server running on port " + PORT
+      );
+    });
+
+  } catch (error) {
+    console.error(
+      "SERVER START ERROR:",
+      error
+    );
+
+    process.exit(1);
+  }
+}
+
+startServer();
