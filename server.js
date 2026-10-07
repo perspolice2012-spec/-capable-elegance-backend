@@ -47,6 +47,15 @@ async function initDatabase() {
     );
   `);
 
+  /* 
+     Compatibility with an older ideas table.
+     If username is already present, nothing changes.
+  */
+  await pool.query(`
+    ALTER TABLE ideas
+    ADD COLUMN IF NOT EXISTS username VARCHAR(100);
+  `);
+
   console.log("DATABASE READY");
 }
 
@@ -131,9 +140,11 @@ app.get("/", async (req, res) => {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <title>CHIKAM | چیکام</title>
 
 <style>
+
 * {
   box-sizing: border-box;
 }
@@ -142,7 +153,11 @@ body {
   margin: 0;
   font-family: Tahoma, Arial, sans-serif;
   background:
-    radial-gradient(circle at top right, rgba(80,120,255,.12), transparent 35%),
+    radial-gradient(
+      circle at top right,
+      rgba(80,120,255,.12),
+      transparent 35%
+    ),
     linear-gradient(135deg, #f6f8fc, #eef2f7);
   color: #172033;
 }
@@ -187,7 +202,11 @@ header {
   padding: 42px 25px;
   border-radius: 24px;
   background:
-    linear-gradient(135deg, rgba(65,91,180,.96), rgba(88,116,220,.88));
+    linear-gradient(
+      135deg,
+      rgba(65,91,180,.96),
+      rgba(88,116,220,.88)
+    );
   color: white;
   text-align: center;
   box-shadow: 0 18px 45px rgba(45,65,130,.18);
@@ -212,7 +231,8 @@ header {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
   gap: 20px;
 }
 
@@ -221,7 +241,8 @@ header {
   border: 1px solid #e2e7f0;
   border-radius: 20px;
   padding: 24px;
-  box-shadow: 0 10px 30px rgba(25,35,60,.06);
+  box-shadow:
+    0 10px 30px rgba(25,35,60,.06);
 }
 
 .card.full {
@@ -258,7 +279,8 @@ input:focus,
 textarea:focus,
 select:focus {
   border-color: #637fe4;
-  box-shadow: 0 0 0 3px rgba(99,127,228,.10);
+  box-shadow:
+    0 0 0 3px rgba(99,127,228,.10);
 }
 
 textarea {
@@ -380,6 +402,7 @@ footer {
 }
 
 @media (max-width: 760px) {
+
   .grid {
     grid-template-columns: 1fr;
   }
@@ -396,7 +419,9 @@ footer {
   .container {
     padding: 0 12px 35px;
   }
+
 }
+
 </style>
 </head>
 
@@ -404,14 +429,31 @@ footer {
 
 <header>
   <div class="header-inner">
-    <div class="logo">چی<span>کام</span></div>
-    <a class="header-link" href="/admin">مدیریت</a>
+
+    <div class="logo">
+      چی<span>کام</span>
+    </div>
+
+    <a
+      class="header-link"
+      href="/admin"
+    >
+      مدیریت
+    </a>
+
   </div>
 </header>
 
 <section class="hero">
-  <h1>هر ایده آغاز یک مسیر</h1>
-  <p>فضای ایده‌ها و همکاری</p>
+
+  <h1>
+    هر ایده آغاز یک مسیر
+  </h1>
+
+  <p>
+    فضای ایده‌ها و همکاری
+  </p>
+
 </section>
 
 <div class="container">
@@ -422,8 +464,14 @@ footer {
 
   <div class="grid">
 
+    <!-- ACCOUNT -->
+
     <section class="card">
-      <h2>حساب کاربری</h2>
+
+      <h2>
+        حساب کاربری
+      </h2>
+
       <div class="subtitle">
         برای شروع فقط نام کاربری و رمز عبور لازم است.
       </div>
@@ -436,35 +484,67 @@ footer {
       >
 
       <div class="password-wrap">
+
         <input
           id="password"
           type="password"
           placeholder="رمز عبور"
           autocomplete="current-password"
         >
+
         <button
           class="eye"
           type="button"
           onclick="togglePassword()"
           aria-label="نمایش رمز"
-        >◉</button>
+        >
+          ◉
+        </button>
+
       </div>
 
       <div class="buttons">
-        <button class="primary" onclick="loginUser()">ورود</button>
-        <button class="secondary" onclick="registerUser()">ثبت‌نام</button>
+
+        <button
+          class="primary"
+          onclick="loginUser()"
+        >
+          ورود
+        </button>
+
+        <button
+          class="secondary"
+          onclick="registerUser()"
+        >
+          ثبت‌نام
+        </button>
+
       </div>
 
-      <div id="authMessage" class="message"></div>
+      <div
+        id="authMessage"
+        class="message"
+      ></div>
+
     </section>
 
+    <!-- IDEA FORM -->
+
     <section class="card">
-      <h2>ثبت یک ایده</h2>
+
+      <h2>
+        ثبت یک ایده
+      </h2>
+
       <div class="subtitle">
         ایده خود را ثبت کنید تا مسیر آن آغاز شود.
       </div>
 
-      <input id="ideaTitle" type="text" placeholder="عنوان ایده">
+      <input
+        id="ideaTitle"
+        type="text"
+        placeholder="عنوان ایده"
+      >
 
       <textarea
         id="ideaDescription"
@@ -483,28 +563,61 @@ footer {
       >
 
       <select id="participationType">
-        <option value="">نوع مشارکت را انتخاب کنید</option>
-        <option value="همکاری">همکاری</option>
-        <option value="سرمایه‌گذاری">سرمایه‌گذاری</option>
-        <option value="ارائه تخصص">ارائه تخصص</option>
-        <option value="ایده و پیشنهاد">ایده و پیشنهاد</option>
+
+        <option value="">
+          نوع مشارکت را انتخاب کنید
+        </option>
+
+        <option value="همکاری">
+          همکاری
+        </option>
+
+        <option value="سرمایه‌گذاری">
+          سرمایه‌گذاری
+        </option>
+
+        <option value="ارائه تخصص">
+          ارائه تخصص
+        </option>
+
+        <option value="ایده و پیشنهاد">
+          ایده و پیشنهاد
+        </option>
+
       </select>
 
-      <button class="primary" onclick="submitIdea()">
+      <button
+        class="primary"
+        onclick="submitIdea()"
+      >
         ثبت ایده
       </button>
 
-      <div id="ideaMessage" class="message"></div>
+      <div
+        id="ideaMessage"
+        class="message"
+      ></div>
+
     </section>
 
+    <!-- IDEAS -->
+
     <section class="card full">
-      <h2>ایده‌های ثبت‌شده</h2>
+
+      <h2>
+        ایده‌های ثبت‌شده
+      </h2>
+
       <div id="ideas">
+
         ${ideaHTML}
+
       </div>
+
     </section>
 
   </div>
+
 </div>
 
 <footer>
@@ -514,7 +627,9 @@ footer {
 <script>
 
 function togglePassword() {
-  const input = document.getElementById("password");
+
+  const input =
+    document.getElementById("password");
 
   input.type =
     input.type === "password"
@@ -522,12 +637,23 @@ function togglePassword() {
       : "password";
 }
 
+
+/* =========================
+   REGISTER
+========================= */
+
 async function registerUser() {
+
   const username =
-    document.getElementById("username").value.trim();
+    document
+      .getElementById("username")
+      .value
+      .trim();
 
   const password =
-    document.getElementById("password").value;
+    document
+      .getElementById("password")
+      .value;
 
   const message =
     document.getElementById("authMessage");
@@ -535,24 +661,34 @@ async function registerUser() {
   message.textContent = "";
 
   if (!username) {
-    message.textContent = "لطفاً نام کاربری را وارد کنید.";
+
+    message.textContent =
+      "لطفاً نام کاربری را وارد کنید.";
+
     return;
   }
 
   if (!password) {
-    message.textContent = "لطفاً رمز عبور را وارد کنید.";
+
+    message.textContent =
+      "لطفاً رمز عبور را وارد کنید.";
+
     return;
   }
 
   if (username.length < 3) {
+
     message.textContent =
       "نام کاربری باید حداقل ۳ کاراکتر باشد.";
+
     return;
   }
 
   if (password.length < 4) {
+
     message.textContent =
       "رمز عبور باید حداقل ۴ کاراکتر باشد.";
+
     return;
   }
 
@@ -561,44 +697,74 @@ async function registerUser() {
   );
 
   if (!phone) {
+
     message.textContent =
       "ثبت‌نام لغو شد؛ شماره تلفن وارد نشده است.";
+
     return;
   }
 
   try {
-    const response = await fetch("/register", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        username,
-        password,
-        phone: phone.trim()
-      })
-    });
 
-    const data = await response.json();
+    const response =
+      await fetch("/register", {
 
-    message.textContent = data.message || "عملیات انجام شد.";
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+
+        body: JSON.stringify({
+          username,
+          password,
+          phone: phone.trim()
+        })
+
+      });
+
+    const data =
+      await response.json();
+
+    message.textContent =
+      data.message ||
+      "عملیات انجام شد.";
 
     if (response.ok) {
-      document.getElementById("password").value = "";
+
+      document
+        .getElementById("password")
+        .value = "";
+
     }
 
   } catch (error) {
+
     message.textContent =
       "ارتباط با سرور برقرار نشد.";
+
   }
+
 }
 
+
+/* =========================
+   LOGIN
+========================= */
+
 async function loginUser() {
+
   const username =
-    document.getElementById("username").value.trim();
+    document
+      .getElementById("username")
+      .value
+      .trim();
 
   const password =
-    document.getElementById("password").value;
+    document
+      .getElementById("password")
+      .value;
 
   const message =
     document.getElementById("authMessage");
@@ -606,244 +772,409 @@ async function loginUser() {
   message.textContent = "";
 
   if (!username || !password) {
+
     message.textContent =
       "نام کاربری و رمز عبور را وارد کنید.";
+
     return;
   }
 
   try {
-    const response = await fetch("/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        username,
-        password
-      })
-    });
 
-    const data = await response.json();
+    const response =
+      await fetch("/login", {
 
-    message.textContent = data.message || "عملیات انجام شد.";
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+
+        body: JSON.stringify({
+          username,
+          password
+        })
+
+      });
+
+    const data =
+      await response.json();
+
+    message.textContent =
+      data.message ||
+      "عملیات انجام شد.";
 
   } catch (error) {
+
     message.textContent =
       "ارتباط با سرور برقرار نشد.";
+
   }
+
 }
 
+
+/* =========================
+   SUBMIT IDEA
+========================= */
+
 async function submitIdea() {
+
   const title =
-    document.getElementById("ideaTitle").value.trim();
+    document
+      .getElementById("ideaTitle")
+      .value
+      .trim();
 
   const description =
-    document.getElementById("ideaDescription").value.trim();
+    document
+      .getElementById("ideaDescription")
+      .value
+      .trim();
 
   const solution =
-    document.getElementById("ideaSolution").value.trim();
+    document
+      .getElementById("ideaSolution")
+      .value
+      .trim();
 
   const category =
-    document.getElementById("ideaCategory").value.trim();
+    document
+      .getElementById("ideaCategory")
+      .value
+      .trim();
 
   const participationType =
-    document.getElementById("participationType").value;
+    document
+      .getElementById("participationType")
+      .value;
 
   const username =
-    document.getElementById("username").value.trim();
+    document
+      .getElementById("username")
+      .value
+      .trim();
 
   const message =
     document.getElementById("ideaMessage");
 
   if (!title) {
+
     message.textContent =
       "لطفاً عنوان ایده را وارد کنید.";
+
     return;
   }
 
   try {
-    const response = await fetch("/ideas", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        title,
-        description,
-        solution,
-        category,
-        participation_type: participationType,
-        username
-      })
-    });
 
-    const data = await response.json();
+    const response =
+      await fetch("/ideas", {
+
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+
+        body: JSON.stringify({
+
+          title,
+          description,
+          solution,
+          category,
+          participation_type:
+            participationType,
+          username
+
+        })
+
+      });
+
+    const data =
+      await response.json();
 
     message.textContent =
-      data.message || "ایده ثبت شد.";
+      data.message ||
+      "ایده ثبت شد.";
 
     if (response.ok) {
+
       setTimeout(() => {
+
         window.location.reload();
+
       }, 700);
+
     }
 
   } catch (error) {
+
     message.textContent =
       "ارتباط با سرور برقرار نشد.";
+
   }
+
 }
 
 </script>
 
 </body>
 </html>
-  `);
+    `);
 
   } catch (error) {
-    console.error("MAIN PAGE ERROR:", error);
-    res.status(500).send("خطا در بارگذاری سایت.");
+
+    console.error(
+      "MAIN PAGE ERROR:",
+      error
+    );
+
+    res
+      .status(500)
+      .send("خطا در بارگذاری سایت.");
+
   }
 });
 
+
 /* =========================
-   REGISTER
+   REGISTER API
 ========================= */
 
 app.post("/register", async (req, res) => {
+
   try {
-    const { username, password, phone } = req.body;
+
+    const {
+      username,
+      password,
+      phone
+    } = req.body;
 
     if (!username || !password || !phone) {
+
       return res.status(400).json({
-        message: "نام کاربری، رمز عبور و شماره تلفن الزامی است."
+
+        message:
+          "نام کاربری، رمز عبور و شماره تلفن الزامی است."
+
       });
+
     }
 
-    const cleanUsername = username.trim();
-    const cleanPhone = phone.trim();
+    const cleanUsername =
+      username.trim();
+
+    const cleanPhone =
+      phone.trim();
 
     if (cleanUsername.length < 3) {
+
       return res.status(400).json({
-        message: "نام کاربری باید حداقل ۳ کاراکتر باشد."
+
+        message:
+          "نام کاربری باید حداقل ۳ کاراکتر باشد."
+
       });
+
     }
 
     if (password.length < 4) {
+
       return res.status(400).json({
-        message: "رمز عبور باید حداقل ۴ کاراکتر باشد."
+
+        message:
+          "رمز عبور باید حداقل ۴ کاراکتر باشد."
+
       });
+
     }
 
-    const usernameCheck = await pool.query(
-      "SELECT id FROM users WHERE username = $1",
-      [cleanUsername]
-    );
+    const usernameCheck =
+      await pool.query(
+        "SELECT id FROM users WHERE username = $1",
+        [cleanUsername]
+      );
 
     if (usernameCheck.rows.length > 0) {
+
       return res.status(409).json({
-        message: "این نام کاربری قبلاً استفاده شده است."
+
+        message:
+          "این نام کاربری قبلاً استفاده شده است."
+
       });
+
     }
 
-    const phoneCheck = await pool.query(
-      "SELECT id FROM users WHERE phone = $1",
-      [cleanPhone]
-    );
+    const phoneCheck =
+      await pool.query(
+        "SELECT id FROM users WHERE phone = $1",
+        [cleanPhone]
+      );
 
     if (phoneCheck.rows.length > 0) {
+
       return res.status(409).json({
+
         message:
           "این شماره تلفن قبلاً برای یک حساب استفاده شده است."
+
       });
+
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash =
+      await bcrypt.hash(password, 10);
 
     await pool.query(
       `
       INSERT INTO users
-      (username, password_hash, phone)
+      (
+        username,
+        password_hash,
+        phone
+      )
       VALUES ($1, $2, $3)
       `,
-      [cleanUsername, passwordHash, cleanPhone]
+      [
+        cleanUsername,
+        passwordHash,
+        cleanPhone
+      ]
     );
 
     return res.status(201).json({
+
       message:
         "ثبت‌نام با موفقیت انجام شد. اکنون می‌توانید وارد شوید."
+
     });
 
   } catch (error) {
-    console.error("REGISTER ERROR:", error);
+
+    console.error(
+      "REGISTER ERROR:",
+      error
+    );
 
     return res.status(500).json({
-      message: "خطا در ثبت‌نام."
+
+      message:
+        "خطا در ثبت‌نام."
+
     });
+
   }
+
 });
 
+
 /* =========================
-   LOGIN
+   LOGIN API
 ========================= */
 
 app.post("/login", async (req, res) => {
+
   try {
-    const { username, password } = req.body;
+
+    const {
+      username,
+      password
+    } = req.body;
 
     if (!username || !password) {
+
       return res.status(400).json({
-        message: "نام کاربری و رمز عبور الزامی است."
+
+        message:
+          "نام کاربری و رمز عبور الزامی است."
+
       });
+
     }
 
-    const result = await pool.query(
-      `
-      SELECT id, username, password_hash
-      FROM users
-      WHERE username = $1
-      `,
-      [username.trim()]
-    );
+    const result =
+      await pool.query(
+        `
+        SELECT
+          id,
+          username,
+          password_hash
+        FROM users
+        WHERE username = $1
+        `,
+        [username.trim()]
+      );
 
     if (result.rows.length === 0) {
+
       return res.status(401).json({
-        message: "نام کاربری یا رمز عبور اشتباه است."
+
+        message:
+          "نام کاربری یا رمز عبور اشتباه است."
+
       });
+
     }
 
-    const user = result.rows[0];
+    const user =
+      result.rows[0];
 
-    const validPassword = await bcrypt.compare(
-      password,
-      user.password_hash
-    );
+    const validPassword =
+      await bcrypt.compare(
+        password,
+        user.password_hash
+      );
 
     if (!validPassword) {
+
       return res.status(401).json({
-        message: "نام کاربری یا رمز عبور اشتباه است."
+
+        message:
+          "نام کاربری یا رمز عبور اشتباه است."
+
       });
+
     }
 
     return res.json({
-      message: `ورود با موفقیت انجام شد. خوش آمدید ${user.username}`
+
+      message:
+        `ورود با موفقیت انجام شد. خوش آمدید ${user.username}`
+
     });
 
   } catch (error) {
-    console.error("LOGIN ERROR:", error);
+
+    console.error(
+      "LOGIN ERROR:",
+      error
+    );
 
     return res.status(500).json({
-      message: "خطا در ورود."
+
+      message:
+        "خطا در ورود."
+
     });
+
   }
+
 });
 
+
 /* =========================
-   IDEAS
+   IDEAS API
 ========================= */
 
 app.post("/ideas", async (req, res) => {
+
   try {
+
     const {
       title,
       description,
@@ -854,9 +1185,14 @@ app.post("/ideas", async (req, res) => {
     } = req.body;
 
     if (!title || !title.trim()) {
+
       return res.status(400).json({
-        message: "عنوان ایده الزامی است."
+
+        message:
+          "عنوان ایده الزامی است."
+
       });
+
     }
 
     await pool.query(
@@ -870,7 +1206,15 @@ app.post("/ideas", async (req, res) => {
         participation_type,
         username
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES
+      (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6
+      )
       `,
       [
         title.trim(),
@@ -883,113 +1227,229 @@ app.post("/ideas", async (req, res) => {
     );
 
     return res.status(201).json({
-      message: "ایده با موفقیت ثبت شد."
+
+      message:
+        "ایده با موفقیت ثبت شد."
+
     });
 
   } catch (error) {
-    console.error("IDEA ERROR:", error);
+
+    console.error(
+      "IDEA ERROR:",
+      error
+    );
 
     return res.status(500).json({
-      message: "خطا در ثبت ایده."
+
+      message:
+        "خطا در ثبت ایده."
+
     });
+
   }
+
 });
+
 
 /* =========================
    DATABASE TEST
 ========================= */
 
 app.get("/db-test", async (req, res) => {
+
   try {
-    const result = await pool.query(
-      "SELECT NOW() AS time"
-    );
+
+    const result =
+      await pool.query(
+        "SELECT NOW() AS time"
+      );
 
     res.json({
+
       success: true,
-      database: "connected",
-      time: result.rows[0].time
+
+      database:
+        "connected",
+
+      time:
+        result.rows[0].time
+
     });
 
   } catch (error) {
-    console.error("DB TEST ERROR:", error);
+
+    console.error(
+      "DB TEST ERROR:",
+      error
+    );
 
     res.status(500).json({
+
       success: false,
-      database: "error",
-      message: error.message
+
+      database:
+        "error",
+
+      message:
+        error.message
+
     });
+
   }
+
 });
 
+
 /* =========================
-   ADMIN
+   ADMIN PAGE
 ========================= */
 
 app.get("/admin", (req, res) => {
+
   res.send(`
 <!DOCTYPE html>
+
 <html lang="fa" dir="rtl">
+
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CHIKAM Admin</title>
+
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+>
+
+<title>
+CHIKAM Admin
+</title>
 
 <style>
+
 body {
+
   margin: 0;
-  font-family: Tahoma, Arial, sans-serif;
-  background: #f2f5f9;
-  color: #182033;
+
+  font-family:
+    Tahoma,
+    Arial,
+    sans-serif;
+
+  background:
+    #f2f5f9;
+
+  color:
+    #182033;
+
 }
 
 .box {
-  max-width: 430px;
-  margin: 80px auto;
-  background: white;
-  padding: 28px;
-  border-radius: 18px;
-  box-shadow: 0 12px 35px rgba(0,0,0,.08);
+
+  max-width:
+    430px;
+
+  margin:
+    80px auto;
+
+  background:
+    white;
+
+  padding:
+    28px;
+
+  border-radius:
+    18px;
+
+  box-shadow:
+    0 12px 35px rgba(0,0,0,.08);
+
 }
 
 h1 {
-  margin-top: 0;
+
+  margin-top:
+    0;
+
 }
 
 input {
-  width: 100%;
-  padding: 13px;
-  margin: 8px 0;
-  box-sizing: border-box;
-  border: 1px solid #d8deea;
-  border-radius: 10px;
-  font-family: inherit;
+
+  width:
+    100%;
+
+  padding:
+    13px;
+
+  margin:
+    8px 0;
+
+  box-sizing:
+    border-box;
+
+  border:
+    1px solid #d8deea;
+
+  border-radius:
+    10px;
+
+  font-family:
+    inherit;
+
 }
 
 button {
-  width: 100%;
-  margin-top: 10px;
-  padding: 13px;
-  border: 0;
-  border-radius: 10px;
-  background: #4767d9;
-  color: white;
-  font-weight: bold;
-  cursor: pointer;
+
+  width:
+    100%;
+
+  margin-top:
+    10px;
+
+  padding:
+    13px;
+
+  border:
+    0;
+
+  border-radius:
+    10px;
+
+  background:
+    #4767d9;
+
+  color:
+    white;
+
+  font-weight:
+    bold;
+
+  cursor:
+    pointer;
+
 }
 
 #message {
-  margin-top: 12px;
-  font-size: 13px;
+
+  margin-top:
+    12px;
+
+  font-size:
+    13px;
+
 }
+
 </style>
+
 </head>
 
 <body>
 
 <div class="box">
 
-<h1>مدیریت چیکام</h1>
+<h1>
+مدیریت چیکام
+</h1>
 
 <input
   id="adminUsername"
@@ -1003,7 +1463,9 @@ button {
   placeholder="رمز عبور مدیر"
 >
 
-<button onclick="adminLogin()">
+<button
+  onclick="adminLogin()"
+>
 ورود مدیر
 </button>
 
@@ -1016,34 +1478,59 @@ button {
 async function adminLogin() {
 
   const username =
-    document.getElementById("adminUsername").value;
+    document
+      .getElementById("adminUsername")
+      .value;
 
   const password =
-    document.getElementById("adminPassword").value;
+    document
+      .getElementById("adminPassword")
+      .value;
 
   const message =
-    document.getElementById("message");
+    document
+      .getElementById("message");
 
   try {
 
-    const response = await fetch("/admin/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        username,
-        password
-      })
-    });
+    const response =
+      await fetch(
+        "/admin/login",
+        {
 
-    const data = await response.json();
+          method:
+            "POST",
+
+          headers: {
+
+            "Content-Type":
+              "application/json"
+
+          },
+
+          body:
+            JSON.stringify({
+
+              username,
+              password
+
+            })
+
+        }
+      );
+
+    const data =
+      await response.json();
 
     message.textContent =
-      data.message || "عملیات انجام شد.";
+      data.message ||
+      "عملیات انجام شد.";
 
     if (response.ok) {
-      window.location.href = "/admin/panel";
+
+      window.location.href =
+        "/admin/panel";
+
     }
 
   } catch (error) {
@@ -1052,139 +1539,250 @@ async function adminLogin() {
       "ارتباط با سرور برقرار نشد.";
 
   }
+
 }
 
 </script>
 
 </body>
+
 </html>
   `);
+
 });
 
-app.post("/admin/login", (req, res) => {
 
-  const { username, password } = req.body;
+/* =========================
+   ADMIN LOGIN
+========================= */
 
-  const adminUsername =
-    process.env.ADMIN_USERNAME;
+app.post(
+  "/admin/login",
+  (req, res) => {
 
-  const adminPassword =
-    process.env.ADMIN_PASSWORD;
+    const {
+      username,
+      password
+    } = req.body;
 
-  if (
-    username === adminUsername &&
-    password === adminPassword
-  ) {
-    return res.json({
-      success: true,
-      message: "ورود مدیر موفق بود."
+    const adminUsername =
+      process.env.ADMIN_USERNAME;
+
+    const adminPassword =
+      process.env.ADMIN_PASSWORD;
+
+    if (
+      username === adminUsername &&
+      password === adminPassword
+    ) {
+
+      return res.json({
+
+        success:
+          true,
+
+        message:
+          "ورود مدیر موفق بود."
+
+      });
+
+    }
+
+    return res.status(401).json({
+
+      success:
+        false,
+
+      message:
+        "نام کاربری یا رمز عبور مدیر اشتباه است."
+
     });
+
   }
+);
 
-  return res.status(401).json({
-    success: false,
-    message: "نام کاربری یا رمز عبور مدیر اشتباه است."
-  });
-});
 
-app.get("/admin/panel", async (req, res) => {
+/* =========================
+   ADMIN PANEL
+========================= */
 
-  try {
+app.get(
+  "/admin/panel",
+  async (req, res) => {
 
-    const users =
-      await pool.query("SELECT COUNT(*) FROM users");
+    try {
 
-    const ideas =
-      await pool.query("SELECT COUNT(*) FROM ideas");
+      const users =
+        await pool.query(
+          "SELECT COUNT(*) FROM users"
+        );
 
-    const ads =
-      await pool.query("SELECT COUNT(*) FROM ads");
+      const ideas =
+        await pool.query(
+          "SELECT COUNT(*) FROM ideas"
+        );
 
-    res.send(`
+      const ads =
+        await pool.query(
+          "SELECT COUNT(*) FROM ads"
+        );
+
+      res.send(`
 <!DOCTYPE html>
+
 <html lang="fa" dir="rtl">
 
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>CHIKAM Admin Panel</title>
+<meta charset="UTF-8">
+
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+>
+
+<title>
+CHIKAM Admin Panel
+</title>
 
 <style>
 
 body {
-  margin: 0;
-  font-family: Tahoma, Arial, sans-serif;
-  background: #f3f5f9;
-  color: #172033;
+
+  margin:
+    0;
+
+  font-family:
+    Tahoma,
+    Arial,
+    sans-serif;
+
+  background:
+    #f3f5f9;
+
+  color:
+    #172033;
+
 }
 
 .container {
-  max-width: 900px;
-  margin: 40px auto;
-  padding: 20px;
+
+  max-width:
+    900px;
+
+  margin:
+    40px auto;
+
+  padding:
+    20px;
+
 }
 
 h1 {
-  margin-bottom: 25px;
+
+  margin-bottom:
+    25px;
+
 }
 
 .grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 15px;
+
+  display:
+    grid;
+
+  grid-template-columns:
+    repeat(3, 1fr);
+
+  gap:
+    15px;
+
 }
 
 .card {
-  background: white;
-  border-radius: 16px;
-  padding: 25px;
-  text-align: center;
-  box-shadow: 0 8px 25px rgba(0,0,0,.06);
+
+  background:
+    white;
+
+  border-radius:
+    16px;
+
+  padding:
+    25px;
+
+  text-align:
+    center;
+
+  box-shadow:
+    0 8px 25px rgba(0,0,0,.06);
+
 }
 
 .number {
-  font-size: 32px;
-  font-weight: bold;
-  margin-top: 10px;
+
+  font-size:
+    32px;
+
+  font-weight:
+    bold;
+
+  margin-top:
+    10px;
+
 }
 
 @media(max-width:700px) {
+
   .grid {
-    grid-template-columns: 1fr;
+
+    grid-template-columns:
+      1fr;
+
   }
+
 }
 
 </style>
+
 </head>
 
 <body>
 
 <div class="container">
 
-<h1>پنل مدیریت چیکام</h1>
+<h1>
+پنل مدیریت چیکام
+</h1>
 
 <div class="grid">
 
 <div class="card">
+
 کاربران
+
 <div class="number">
 ${users.rows[0].count}
 </div>
+
 </div>
 
 <div class="card">
+
 ایده‌ها
+
 <div class="number">
 ${ideas.rows[0].count}
 </div>
+
 </div>
 
 <div class="card">
+
 تبلیغات
+
 <div class="number">
 ${ads.rows[0].count}
 </div>
+
 </div>
 
 </div>
@@ -1192,34 +1790,59 @@ ${ads.rows[0].count}
 </div>
 
 </body>
+
 </html>
-    `);
+      `);
 
-  } catch (error) {
+    } catch (error) {
 
-    console.error("ADMIN PANEL ERROR:", error);
+      console.error(
+        "ADMIN PANEL ERROR:",
+        error
+      );
 
-    res.status(500).send(
-      "خطا در بارگذاری پنل مدیریت."
-    );
+      res
+        .status(500)
+        .send(
+          "خطا در بارگذاری پنل مدیریت."
+        );
+
+    }
 
   }
+);
 
-});
 
 /* =========================
-   SECURITY HELPER
+   HTML ESCAPE
 ========================= */
 
 function escapeHTML(value) {
 
   return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    .replace(
+      /&/g,
+      "&amp;"
+    )
+    .replace(
+      /</g,
+      "&lt;"
+    )
+    .replace(
+      />/g,
+      "&gt;"
+    )
+    .replace(
+      /"/g,
+      "&quot;"
+    )
+    .replace(
+      /'/g,
+      "&#039;"
+    );
+
 }
+
 
 /* =========================
    START SERVER
@@ -1231,13 +1854,17 @@ async function startServer() {
 
     await initDatabase();
 
-    app.listen(PORT, "0.0.0.0", () => {
+    app.listen(
+      PORT,
+      "0.0.0.0",
+      () => {
 
-      console.log(
-        `CHIKAM SERVER RUNNING ON PORT ${PORT}`
-      );
+        console.log(
+          `CHIKAM SERVER RUNNING ON PORT ${PORT}`
+        );
 
-    });
+      }
+    );
 
   } catch (error) {
 
@@ -1247,7 +1874,9 @@ async function startServer() {
     );
 
     process.exit(1);
+
   }
+
 }
 
 startServer();
