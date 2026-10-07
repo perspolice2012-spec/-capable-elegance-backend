@@ -62,7 +62,10 @@ async function initDatabase() {
     ADD COLUMN IF NOT EXISTS email VARCHAR(255);
   `);
 
-
+await pool.query(`
+  ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
+`);
   console.log("DATABASE READY");
 }
 
