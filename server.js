@@ -20,62 +20,26 @@ const ADMIN_PASSWORD =
 
 app.disable("x-powered-by");
 
-app.use(
-  express.json({
-    limit: "1mb",
-  })
-);
-
-app.use(
-  express.urlencoded({
-    extended: true,
-    limit: "1mb",
-  })
-);
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 app.use((req, res, next) => {
-  res.setHeader(
-    "X-Content-Type-Options",
-    "nosniff"
-  );
-
-  res.setHeader(
-    "X-Frame-Options",
-    "SAMEORIGIN"
-  );
-
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader(
     "Referrer-Policy",
     "strict-origin-when-cross-origin"
   );
-
-  res.setHeader(
-    "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=()"
-  );
-
   next();
 });
-
-
-/* =========================
-   DATABASE
-========================= */
 
 const pool = DATABASE_URL
   ? new Pool({
       connectionString: DATABASE_URL,
-      ssl: {
-        rejectUnauthorized: false,
-      },
+      ssl: { rejectUnauthorized: false },
       max: 5,
     })
   : null;
-
-
-/* =========================
-   COOKIE / SESSION
-========================= */
 
 function parseCookies(req) {
   const result = {};
@@ -84,110 +48,64 @@ function parseCookies(req) {
   for (const part of header.split(";")) {
     const index = part.indexOf("=");
 
-    if (index < 0) {
-      continue;
+    if (index < 0) continue;
+
+    const key = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+
+    try {
+      result[key] = decodeURIComponent(value);
+    } catch {
+      result[key] = value;
     }
-
-    const key = part
-      .slice(0, index)
-      .trim();
-
-    const value = part
-      .slice(index + 1)
-      .trim();
-
-    result[key] =
-      decodeURIComponent(value);
   }
 
   return result;
 }
 
-
 function safeEqual(a, b) {
-  const aa = Buffer.from(
-    String(a || "")
-  );
+  const aa = Buffer.from(String(a || ""));
+  const bb = Buffer.from(String(b || ""));
 
-  const bb = Buffer.from(
-    String(b || "")
-  );
+  if (aa.length !== bb.length) return false;
 
-  if (aa.length !== bb.length) {
-    return false;
-  }
-
-  return crypto.timingSafeEqual(
-    aa,
-    bb
-  );
+  return crypto.timingSafeEqual(aa, bb);
 }
-
 
 function sign(value) {
   return crypto
-    .createHmac(
-      "sha256",
-      SESSION_SECRET
-    )
+    .createHmac("sha256", SESSION_SECRET)
     .update(value)
     .digest("hex");
 }
 
-
 function createToken(payload) {
-  const body =
-    Buffer.from(
-      JSON.stringify(payload)
-    ).toString("base64url");
+  const body = Buffer.from(
+    JSON.stringify(payload)
+  ).toString("base64url");
 
-  return (
-    body +
-    "." +
-    sign(body)
-  );
+  return body + "." + sign(body);
 }
-
 
 function verifyToken(token) {
   try {
-    if (
-      !token ||
-      !token.includes(".")
-    ) {
+    if (!token || !token.includes(".")) {
       return null;
     }
 
-    const index =
-      token.lastIndexOf(".");
+    const index = token.lastIndexOf(".");
+    const body = token.slice(0, index);
+    const signature = token.slice(index + 1);
 
-    const body =
-      token.slice(0, index);
-
-    const signature =
-      token.slice(index + 1);
-
-    if (
-      !safeEqual(
-        signature,
-        sign(body)
-      )
-    ) {
+    if (!safeEqual(signature, sign(body))) {
       return null;
     }
 
-    const payload =
-      JSON.parse(
-        Buffer.from(
-          body,
-          "base64url"
-        ).toString("utf8")
-      );
+    const payload = JSON.parse(
+      Buffer.from(body, "base64url").toString("utf8")
+    );
 
-    if (
-      !payload.exp ||
-      Date.now() > payload.exp
-    ) {
+    if (!payload.exp || Date.now() > payload.exp) {
       return null;
     }
 
@@ -197,65 +115,35 @@ function verifyToken(token) {
   }
 }
 
-
-function setCookie(
-  res,
-  name,
-  value,
-  maxAge,
-  sameSite = "Lax"
-) {
+function setCookie(res, name, value, maxAge, sameSite = "Lax") {
   res.setHeader(
     "Set-Cookie",
-    `${name}=${encodeURIComponent(
-      value
-    )}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=${sameSite}`
+    `${name}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=${sameSite}`
   );
 }
 
-
-function clearCookie(
-  res,
-  name,
-  sameSite = "Lax"
-) {
+function clearCookie(res, name, sameSite = "Lax") {
   res.setHeader(
     "Set-Cookie",
     `${name}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=${sameSite}`
   );
 }
 
-
 function getUser(req) {
-  const cookies =
-    parseCookies(req);
-
   return verifyToken(
-    cookies.chikam_session
+    parseCookies(req).chikam_session
   );
 }
-
 
 function getAdmin(req) {
-  const cookies =
-    parseCookies(req);
-
   return verifyToken(
-    cookies.chikam_admin
+    parseCookies(req).chikam_admin
   );
 }
-
-
-/* =========================
-   DATABASE INIT
-========================= */
 
 async function initDb() {
   if (!pool) {
-    console.warn(
-      "DATABASE_URL is not set."
-    );
-
+    console.warn("DATABASE_URL is not set.");
     return;
   }
 
@@ -289,885 +177,631 @@ async function initDb() {
     );
 
     ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS email VARCHAR(255);
+      ADD COLUMN IF NOT EXISTS email VARCHAR(255);
 
     ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
+      ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
 
     ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS password_hash TEXT;
+      ADD COLUMN IF NOT EXISTS password_hash TEXT;
 
     ALTER TABLE ideas
-    ADD COLUMN IF NOT EXISTS username VARCHAR(100);
+      ADD COLUMN IF NOT EXISTS username VARCHAR(100);
   `);
 }
 
+app.get("/health", (req, res) => {
+  res.json({
+    ok: true,
+    service: "capable-elegance",
+    time: new Date().toISOString(),
+  });
+});
 
-/* =========================
-   HEALTH
-========================= */
-
-app.get(
-  "/health",
-  (req, res) => {
-    res.json({
-      ok: true,
-      service:
-        "capable-elegance",
-      time:
-        new Date().toISOString(),
+app.get("/db-test", async (req, res) => {
+  if (!pool) {
+    return res.status(500).json({
+      ok: false,
+      error: "DATABASE_URL is missing",
     });
   }
-);
 
+  try {
+    const result = await pool.query(
+      "SELECT NOW() AS now"
+    );
 
-/* =========================
-   DATABASE TEST
-========================= */
+    res.json({
+      ok: true,
+      database: "connected",
+      now: result.rows[0].now,
+    });
+  } catch (error) {
+    console.error("DB TEST ERROR:", error);
 
-app.get(
-  "/db-test",
-  async (req, res) => {
+    res.status(500).json({
+      ok: false,
+      error: "Database connection failed",
+    });
+  }
+});
+
+app.post("/register", async (req, res) => {
+  try {
     if (!pool) {
       return res.status(500).json({
         ok: false,
-        error:
-          "DATABASE_URL is missing",
+        message: "Database is not configured.",
       });
     }
 
-    try {
-      const result =
-        await pool.query(
-          "SELECT NOW() AS now"
-        );
+    const username =
+      String(req.body.username || "").trim();
 
-      res.json({
-        ok: true,
-        database: "connected",
-        now:
-          result.rows[0].now,
-      });
-    } catch (error) {
-      console.error(
-        "DB TEST ERROR:",
-        error
-      );
+    const password =
+      String(req.body.password || "");
 
-      res.status(500).json({
-        ok: false,
-        error:
-          "Database connection failed",
-      });
-    }
-  }
-);
+    const confirmPassword =
+      String(req.body.confirmPassword || "");
 
+    const phone =
+      String(req.body.phone || "").trim() || null;
 
-/* =========================
-   REGISTER
-========================= */
+    const email =
+      String(req.body.email || "")
+        .trim()
+        .toLowerCase() || null;
 
-app.post(
-  "/register",
-  async (req, res) => {
-    try {
-      if (!pool) {
-        return res.status(500).json({
-          ok: false,
-          message:
-            "Database is not configured.",
-        });
-      }
-
-      const username =
-        String(
-          req.body.username || ""
-        ).trim();
-
-      const password =
-        String(
-          req.body.password || ""
-        );
-
-      const confirmPassword =
-        String(
-          req.body.confirmPassword ||
-            ""
-        );
-
-      const phone =
-        String(
-          req.body.phone || ""
-        ).trim() || null;
-
-      const email =
-        String(
-          req.body.email || ""
-        )
-          .trim()
-          .toLowerCase() || null;
-
-
-      if (
-        username.length < 3 ||
-        username.length > 100
-      ) {
-        return res.status(400).json({
-          ok: false,
-          message:
-            "نام کاربری باید بین ۳ تا ۱۰۰ کاراکتر باشد.",
-        });
-      }
-
-
-      if (password.length < 6) {
-        return res.status(400).json({
-          ok: false,
-          message:
-            "رمز عبور باید حداقل ۶ کاراکتر باشد.",
-        });
-      }
-
-
-      if (
-        password !==
-        confirmPassword
-      ) {
-        return res.status(400).json({
-          ok: false,
-          message:
-            "تکرار رمز عبور یکسان نیست.",
-        });
-      }
-
-
-      const duplicate =
-        await pool.query(
-          `
-          SELECT username, phone, email
-          FROM users
-          WHERE
-            LOWER(username) = LOWER($1)
-            OR
-            ($2::text IS NOT NULL AND phone = $2)
-            OR
-            ($3::text IS NOT NULL AND LOWER(email) = LOWER($3))
-          LIMIT 1
-          `,
-          [
-            username,
-            phone,
-            email,
-          ]
-        );
-
-
-      if (
-        duplicate.rows.length
-      ) {
-        const row =
-          duplicate.rows[0];
-
-
-        if (
-          String(
-            row.username
-          ).toLowerCase() ===
-          username.toLowerCase()
-        ) {
-          return res
-            .status(409)
-            .json({
-              ok: false,
-              message:
-                "این نام کاربری قبلاً استفاده شده است.",
-            });
-        }
-
-
-        if (
-          phone &&
-          row.phone === phone
-        ) {
-          return res
-            .status(409)
-            .json({
-              ok: false,
-              message:
-                "این شماره تلفن قبلاً برای یک حساب ثبت شده است.",
-            });
-        }
-
-
-        return res
-          .status(409)
-          .json({
-            ok: false,
-            message:
-              "این ایمیل قبلاً ثبت شده است.",
-          });
-      }
-
-
-      const passwordHash =
-        await bcrypt.hash(
-          password,
-          12
-        );
-
-
-      const result =
-        await pool.query(
-          `
-          INSERT INTO users
-          (
-            username,
-            password_hash,
-            phone,
-            email
-          )
-          VALUES
-          ($1,$2,$3,$4)
-          RETURNING
-          id,
-          username,
-          phone,
-          email,
-          created_at
-          `,
-          [
-            username,
-            passwordHash,
-            phone,
-            email,
-          ]
-        );
-
-
-      res.status(201).json({
-        ok: true,
-        message:
-          "حساب با موفقیت ایجاد شد.",
-        user:
-          result.rows[0],
-      });
-
-    } catch (error) {
-
-      console.error(
-        "REGISTER ERROR:",
-        error
-      );
-
-      res.status(500).json({
+    if (
+      username.length < 3 ||
+      username.length > 100
+    ) {
+      return res.status(400).json({
         ok: false,
         message:
-          "خطا در ایجاد حساب.",
+          "نام کاربری باید بین ۳ تا ۱۰۰ کاراکتر باشد.",
       });
     }
-  }
-);
 
-
-/* =========================
-   LOGIN
-========================= */
-
-app.post(
-  "/login",
-  async (req, res) => {
-    try {
-
-      if (!pool) {
-        return res.status(500).json({
-          ok: false,
-          message:
-            "Database is not configured.",
-        });
-      }
-
-
-      const username =
-        String(
-          req.body.username || ""
-        ).trim();
-
-      const password =
-        String(
-          req.body.password || ""
-        );
-
-
-      if (
-        !username ||
-        !password
-      ) {
-        return res.status(400).json({
-          ok: false,
-          message:
-            "نام کاربری و رمز عبور را وارد کنید.",
-        });
-      }
-
-
-      const result =
-        await pool.query(
-          `
-          SELECT
-            id,
-            username,
-            password_hash
-          FROM users
-          WHERE
-            LOWER(username) =
-            LOWER($1)
-          LIMIT 1
-          `,
-          [username]
-        );
-
-
-      if (
-        !result.rows.length
-      ) {
-        return res
-          .status(401)
-          .json({
-            ok: false,
-            message:
-              "نام کاربری یا رمز عبور اشتباه است.",
-          });
-      }
-
-
-      const user =
-        result.rows[0];
-
-
-      const valid =
-        await bcrypt.compare(
-          password,
-          user.password_hash
-        );
-
-
-      if (!valid) {
-        return res
-          .status(401)
-          .json({
-            ok: false,
-            message:
-              "نام کاربری یا رمز عبور اشتباه است.",
-          });
-      }
-
-
-      const token =
-        createToken({
-          type: "user",
-          id: user.id,
-          username:
-            user.username,
-          exp:
-            Date.now() +
-            7 *
-              24 *
-              60 *
-              60 *
-              1000,
-        });
-
-
-      setCookie(
-        res,
-        "chikam_session",
-        token,
-        7 *
-          24 *
-          60 *
-          60,
-        "Lax"
-      );
-
-
-      res.json({
-        ok: true,
-        message:
-          "ورود موفق بود.",
-        username:
-          user.username,
-      });
-
-    } catch (error) {
-
-      console.error(
-        "LOGIN ERROR:",
-        error
-      );
-
-      res.status(500).json({
+    if (password.length < 6) {
+      return res.status(400).json({
         ok: false,
         message:
-          "خطا در ورود.",
-      });
-    }
-  }
-);
-
-
-/* =========================
-   CURRENT USER
-========================= */
-
-app.get(
-  "/me",
-  (req, res) => {
-
-    const user =
-      getUser(req);
-
-
-    if (!user) {
-      return res.json({
-        loggedIn: false,
+          "رمز عبور باید حداقل ۶ کاراکتر باشد.",
       });
     }
 
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        ok: false,
+        message:
+          "تکرار رمز عبور یکسان نیست.",
+      });
+    }
 
-    res.json({
-      loggedIn: true,
-      username:
-        user.username,
+    const duplicate = await pool.query(
+      `
+      SELECT username, phone, email
+      FROM users
+      WHERE
+        LOWER(username) = LOWER($1)
+        OR ($2::text IS NOT NULL AND phone = $2)
+        OR ($3::text IS NOT NULL AND LOWER(email) = LOWER($3))
+      LIMIT 1
+      `,
+      [username, phone, email]
+    );
+
+    if (duplicate.rows.length) {
+      const row = duplicate.rows[0];
+
+      if (
+        String(row.username).toLowerCase() ===
+        username.toLowerCase()
+      ) {
+        return res.status(409).json({
+          ok: false,
+          message:
+            "این نام کاربری قبلاً استفاده شده است.",
+        });
+      }
+
+      if (phone && row.phone === phone) {
+        return res.status(409).json({
+          ok: false,
+          message:
+            "این شماره تلفن قبلاً برای یک حساب ثبت شده است.",
+        });
+      }
+
+      return res.status(409).json({
+        ok: false,
+        message:
+          "این ایمیل قبلاً ثبت شده است.",
+      });
+    }
+
+    const passwordHash =
+      await bcrypt.hash(password, 12);
+
+    const result = await pool.query(
+      `
+      INSERT INTO users
+        (username, password_hash, phone, email)
+      VALUES
+        ($1, $2, $3, $4)
+      RETURNING
+        id,
+        username,
+        phone,
+        email,
+        created_at
+      `,
+      [
+        username,
+        passwordHash,
+        phone,
+        email,
+      ]
+    );
+
+    res.status(201).json({
+      ok: true,
+      message:
+        "حساب با موفقیت ایجاد شد.",
+      user: result.rows[0],
+    });
+
+  } catch (error) {
+
+    console.error(
+      "REGISTER ERROR:",
+      error
+    );
+
+    res.status(500).json({
+      ok: false,
+      message:
+        "خطا در ایجاد حساب.",
     });
   }
-);
+});
 
+app.post("/login", async (req, res) => {
+  try {
+    if (!pool) {
+      return res.status(500).json({
+        ok: false,
+        message:
+          "Database is not configured.",
+      });
+    }
 
-/* =========================
-   LOGOUT
-========================= */
+    const username =
+      String(req.body.username || "").trim();
 
-app.post(
-  "/logout",
-  (req, res) => {
+    const password =
+      String(req.body.password || "");
 
-    clearCookie(
+    if (!username || !password) {
+      return res.status(400).json({
+        ok: false,
+        message:
+          "نام کاربری و رمز عبور را وارد کنید.",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        id,
+        username,
+        password_hash
+      FROM users
+      WHERE LOWER(username) = LOWER($1)
+      LIMIT 1
+      `,
+      [username]
+    );
+
+    if (!result.rows.length) {
+      return res.status(401).json({
+        ok: false,
+        message:
+          "نام کاربری یا رمز عبور اشتباه است.",
+      });
+    }
+
+    const user = result.rows[0];
+
+    if (!user.password_hash) {
+      return res.status(401).json({
+        ok: false,
+        message:
+          "برای این حساب رمز عبور معتبر ثبت نشده است.",
+      });
+    }
+
+    const valid =
+      await bcrypt.compare(
+        password,
+        user.password_hash
+      );
+
+    if (!valid) {
+      return res.status(401).json({
+        ok: false,
+        message:
+          "نام کاربری یا رمز عبور اشتباه است.",
+      });
+    }
+
+    const token = createToken({
+      type: "user",
+      id: user.id,
+      username: user.username,
+      exp:
+        Date.now() +
+        7 * 24 * 60 * 60 * 1000,
+    });
+
+    setCookie(
       res,
       "chikam_session",
+      token,
+      7 * 24 * 60 * 60,
       "Lax"
     );
 
     res.json({
       ok: true,
+      message:
+        "ورود موفق بود.",
+      username: user.username,
+    });
+
+  } catch (error) {
+
+    console.error(
+      "LOGIN ERROR:",
+      error
+    );
+
+    res.status(500).json({
+      ok: false,
+      message:
+        "خطا در ورود.",
     });
   }
-);
+});
 
+app.get("/me", (req, res) => {
 
-/* =========================
-   GET IDEAS
-========================= */
+  const user = getUser(req);
 
-app.get(
-  "/ideas",
-  async (req, res) => {
-
-    try {
-
-      if (!pool) {
-        return res
-          .status(500)
-          .json({
-            ok: false,
-            message:
-              "Database is not configured.",
-          });
-      }
-
-
-      const result =
-        await pool.query(`
-          SELECT
-            id,
-            title,
-            description,
-            solution,
-            category,
-            participation_type,
-            username,
-            created_at
-          FROM ideas
-          ORDER BY id DESC
-          LIMIT 100
-        `);
-
-
-      res.json({
-        ok: true,
-        ideas:
-          result.rows,
-      });
-
-    } catch (error) {
-
-      console.error(
-        "IDEAS GET ERROR:",
-        error
-      );
-
-      res.status(500).json({
-        ok: false,
-        message:
-          "خطا در دریافت ایده‌ها.",
-      });
-    }
+  if (!user) {
+    return res.json({
+      loggedIn: false
+    });
   }
-);
 
+  res.json({
+    loggedIn: true,
+    username: user.username,
+  });
+});
 
-/* =========================
-   CREATE IDEA
-========================= */
+app.post("/logout", (req, res) => {
 
-app.post(
-  "/ideas",
-  async (req, res) => {
+  clearCookie(
+    res,
+    "chikam_session",
+    "Lax"
+  );
 
-    try {
-
-      if (!pool) {
-        return res
-          .status(500)
-          .json({
-            ok: false,
-            message:
-              "Database is not configured.",
-          });
-      }
-
-
-      const user =
-        getUser(req);
-
-
-      if (!user) {
-        return res
-          .status(401)
-          .json({
-            ok: false,
-            message:
-              "برای ثبت ایده ابتدا وارد حساب شوید.",
-          });
-      }
-
-
-      const title =
-        String(
-          req.body.title || ""
-        ).trim();
-
-      const description =
-        String(
-          req.body.description ||
-            ""
-        ).trim();
-
-      const solution =
-        String(
-          req.body.solution || ""
-        ).trim();
-
-      const category =
-        String(
-          req.body.category || ""
-        ).trim();
-
-      const participationType =
-        String(
-          req.body
-            .participationType || ""
-        ).trim();
-
-
-      if (!title) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            message:
-              "عنوان ایده را وارد کنید.",
-          });
-      }
-
-
-      const result =
-        await pool.query(
-          `
-          INSERT INTO ideas
-          (
-            title,
-            description,
-            solution,
-            category,
-            participation_type,
-            username
-          )
-          VALUES
-          ($1,$2,$3,$4,$5,$6)
-          RETURNING *
-          `,
-          [
-            title,
-            description,
-            solution,
-            category,
-            participationType,
-            user.username,
-          ]
-        );
-
-
-      res.status(201).json({
-        ok: true,
-        message:
-          "ایده با موفقیت ثبت شد.",
-        idea:
-          result.rows[0],
-      });
-
-    } catch (error) {
-
-      console.error(
-        "IDEAS POST ERROR:",
-        error
-      );
-
-      res.status(500).json({
+  res.json({
+    ok: true
+  });
+});app.get("/ideas", async (req, res) => {
+  try {
+    if (!pool) {
+      return res.status(500).json({
         ok: false,
-        message:
-          "خطا در ثبت ایده.",
+        message: "Database is not configured.",
       });
     }
-  }
-);
 
-
-/* =========================
-   ADMIN LOGIN
-========================= */
-
-app.post(
-  "/admin/login",
-  (req, res) => {
-
-    const username =
-      String(
-        req.body.username || ""
-      );
-
-    const password =
-      String(
-        req.body.password || ""
-      );
-
-
-    if (!ADMIN_PASSWORD) {
-      return res
-        .status(503)
-        .json({
-          ok: false,
-          message:
-            "ADMIN_PASSWORD در Railway تنظیم نشده است.",
-        });
-    }
-
-
-    if (
-      !safeEqual(
+    const result = await pool.query(`
+      SELECT
+        id,
+        title,
+        description,
+        solution,
+        category,
+        participation_type,
         username,
-        ADMIN_USERNAME
-      ) ||
-      !safeEqual(
-        password,
-        ADMIN_PASSWORD
-      )
-    ) {
-      return res
-        .status(401)
-        .json({
-          ok: false,
-          message:
-            "اطلاعات مدیریت صحیح نیست.",
-        });
-    }
-
-
-    const token =
-      createToken({
-        type: "admin",
-        username:
-          ADMIN_USERNAME,
-        exp:
-          Date.now() +
-          4 *
-            60 *
-            60 *
-            1000,
-      });
-
-
-    setCookie(
-      res,
-      "chikam_admin",
-      token,
-      4 * 60 * 60,
-      "Strict"
-    );
-
+        created_at
+      FROM ideas
+      ORDER BY id DESC
+      LIMIT 100
+    `);
 
     res.json({
       ok: true,
+      ideas: result.rows,
     });
-  }
-);
 
+  } catch (error) {
 
-/* =========================
-   ADMIN LOGOUT
-========================= */
-
-app.post(
-  "/admin/logout",
-  (req, res) => {
-
-    clearCookie(
-      res,
-      "chikam_admin",
-      "Strict"
+    console.error(
+      "IDEAS GET ERROR:",
+      error
     );
 
-    res.json({
-      ok: true,
+    res.status(500).json({
+      ok: false,
+      message:
+        "خطا در دریافت ایده‌ها.",
     });
   }
-);
+});
 
+app.post("/ideas", async (req, res) => {
+  try {
 
-/* =========================
-   ADMIN PANEL API
-========================= */
-
-app.get(
-  "/admin/panel",
-  async (req, res) => {
-
-    try {
-
-      if (!getAdmin(req)) {
-        return res
-          .status(401)
-          .json({
-            ok: false,
-            message:
-              "Unauthorized",
-          });
-      }
-
-
-      if (!pool) {
-        return res
-          .status(500)
-          .json({
-            ok: false,
-            message:
-              "Database is not configured.",
-          });
-      }
-
-
-      const [
-        users,
-        ideas,
-        ads,
-      ] =
-        await Promise.all([
-
-          pool.query(`
-            SELECT
-              id,
-              username,
-              phone,
-              email,
-              created_at
-            FROM users
-            ORDER BY id DESC
-            LIMIT 500
-          `),
-
-          pool.query(`
-            SELECT
-              id,
-              title,
-              category,
-              participation_type,
-              username,
-              created_at
-            FROM ideas
-            ORDER BY id DESC
-            LIMIT 500
-          `),
-
-          pool.query(`
-            SELECT
-              id,
-              title,
-              description,
-              username,
-              created_at
-            FROM ads
-            ORDER BY id DESC
-            LIMIT 200
-          `),
-
-        ]);
-
-
-      res.json({
-        ok: true,
-        users:
-          users.rows,
-        ideas:
-          ideas.rows,
-        ads:
-          ads.rows,
-      });
-
-    } catch (error) {
-
-      console.error(
-        "ADMIN PANEL ERROR:",
-        error
-      );
-
-      res.status(500).json({
+    if (!pool) {
+      return res.status(500).json({
         ok: false,
         message:
-          "خطا در پنل مدیریت.",
+          "Database is not configured.",
       });
     }
+
+    const user = getUser(req);
+
+    if (!user) {
+      return res.status(401).json({
+        ok: false,
+        message:
+          "برای ثبت ایده ابتدا وارد حساب شوید.",
+      });
+    }
+
+    const title =
+      String(req.body.title || "").trim();
+
+    const description =
+      String(
+        req.body.description || ""
+      ).trim();
+
+    const solution =
+      String(
+        req.body.solution || ""
+      ).trim();
+
+    const category =
+      String(
+        req.body.category || ""
+      ).trim();
+
+    const participationType =
+      String(
+        req.body.participationType || ""
+      ).trim();
+
+    if (!title) {
+      return res.status(400).json({
+        ok: false,
+        message:
+          "عنوان ایده را وارد کنید.",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO ideas
+        (
+          title,
+          description,
+          solution,
+          category,
+          participation_type,
+          username
+        )
+      VALUES
+        ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+      `,
+      [
+        title,
+        description,
+        solution,
+        category,
+        participationType,
+        user.username,
+      ]
+    );
+
+    res.status(201).json({
+      ok: true,
+      message:
+        "ایده با موفقیت ثبت شد.",
+      idea: result.rows[0],
+    });
+
+  } catch (error) {
+
+    console.error(
+      "IDEAS POST ERROR:",
+      error
+    );
+
+    res.status(500).json({
+      ok: false,
+      message:
+        "خطا در ثبت ایده.",
+    });
   }
-);
+});
 
+app.post("/admin/login", (req, res) => {
 
-/* =========================
-   CHIKAM MAIN PAGE
-========================= */
+  const username =
+    String(
+      req.body.username || ""
+    ).trim();
 
-function page() {
+  const password =
+    String(
+      req.body.password || ""
+    );
 
+  if (!ADMIN_PASSWORD) {
+    return res.status(503).json({
+      ok: false,
+      message:
+        "ADMIN_PASSWORD در Railway تنظیم نشده است.",
+    });
+  }
+
+  if (
+    !safeEqual(
+      username,
+      ADMIN_USERNAME
+    ) ||
+    !safeEqual(
+      password,
+      ADMIN_PASSWORD
+    )
+  ) {
+    return res.status(401).json({
+      ok: false,
+      message:
+        "اطلاعات مدیریت صحیح نیست.",
+    });
+  }
+
+  const token = createToken({
+    type: "admin",
+    username: ADMIN_USERNAME,
+    exp:
+      Date.now() +
+      4 * 60 * 60 * 1000,
+  });
+
+  setCookie(
+    res,
+    "chikam_admin",
+    token,
+    4 * 60 * 60,
+    "Strict"
+  );
+
+  res.json({
+    ok: true
+  });
+});
+
+app.post("/admin/logout", (req, res) => {
+
+  clearCookie(
+    res,
+    "chikam_admin",
+    "Strict"
+  );
+
+  res.json({
+    ok: true
+  });
+});
+
+app.get("/admin/panel", async (req, res) => {
+
+  try {
+
+    if (!getAdmin(req)) {
+      return res.status(401).json({
+        ok: false,
+        message: "Unauthorized",
+      });
+    }
+
+    if (!pool) {
+      return res.status(500).json({
+        ok: false,
+        message:
+          "Database is not configured.",
+      });
+    }
+
+    const [
+      users,
+      ideas,
+      ads
+    ] = await Promise.all([
+
+      pool.query(`
+        SELECT
+          id,
+          username,
+          phone,
+          email,
+          created_at
+        FROM users
+        ORDER BY id DESC
+        LIMIT 500
+      `),
+
+      pool.query(`
+        SELECT
+          id,
+          title,
+          category,
+          participation_type,
+          username,
+          created_at
+        FROM ideas
+        ORDER BY id DESC
+        LIMIT 500
+      `),
+
+      pool.query(`
+        SELECT
+          id,
+          title,
+          description,
+          username,
+          created_at
+        FROM ads
+        ORDER BY id DESC
+        LIMIT 200
+      `)
+
+    ]);
+
+    res.json({
+      ok: true,
+      users: users.rows,
+      ideas: ideas.rows,
+      ads: ads.rows,
+    });
+
+  } catch (error) {
+
+    console.error(
+      "ADMIN PANEL ERROR:",
+      error
+    );
+
+    res.status(500).json({
+      ok: false,
+      message:
+        "خطا در پنل مدیریت.",
+    });
+  }
+});function page() {
   return `<!doctype html>
-
 <html lang="fa" dir="rtl">
 
 <head>
@@ -1184,10 +818,7 @@ function page() {
   content="چیکام؛ هر ایده آغاز یک مسیر"
 >
 
-<title>
-چیکام | هر ایده آغاز یک مسیر
-</title>
-
+<title>چیکام | هر ایده آغاز یک مسیر</title>
 
 <style>
 
@@ -1209,21 +840,14 @@ function page() {
 
 body{
   margin:0;
-
-  font-family:
-    Tahoma,
-    Arial,
-    sans-serif;
-
+  font-family:Tahoma,Arial,sans-serif;
   background:
     radial-gradient(
       circle at 50% -10%,
       #163858 0,
       #07111f 45%
     );
-
   color:var(--text);
-
   line-height:1.8;
 }
 
@@ -1241,58 +865,39 @@ a{
   position:sticky;
   top:0;
   z-index:10;
-
-  background:
-    rgba(7,17,31,.88);
-
+  background:rgba(7,17,31,.88);
   backdrop-filter:blur(14px);
-
-  border-bottom:
-    1px solid
-    rgba(255,255,255,.07);
+  border-bottom:1px solid rgba(255,255,255,.07);
 }
 
 .nav{
   height:72px;
-
   display:flex;
-
   align-items:center;
-
   justify-content:space-between;
-
   gap:20px;
 }
 
 .brand{
   display:flex;
-
   align-items:center;
-
   gap:11px;
-
   font-weight:800;
-
   font-size:22px;
 }
 
 .logo{
   width:44px;
   height:44px;
-
   border-radius:14px;
-
   background:
     linear-gradient(
       135deg,
       var(--green),
       #55f0aa
     );
-
   display:grid;
-
   place-items:center;
-
   box-shadow:
     0 10px 25px
     rgba(49,208,124,.22);
@@ -1305,35 +910,23 @@ a{
 
 .nav-actions{
   display:flex;
-
   gap:8px;
-
   align-items:center;
 }
 
 .btn{
-  border:
-    1px solid
-    var(--line);
-
+  border:1px solid var(--line);
   background:#0b1828;
-
   color:var(--text);
-
   border-radius:12px;
-
   padding:9px 15px;
-
   cursor:pointer;
-
   font:inherit;
-
   transition:.2s;
 }
 
 .btn:hover{
-  transform:
-    translateY(-1px);
+  transform:translateY(-1px);
 }
 
 .btn.primary{
@@ -1343,43 +936,27 @@ a{
       var(--green),
       var(--green2)
     );
-
   border:0;
-
   color:#03150c;
-
   font-weight:800;
 }
 
 .hero{
-  padding:
-    70px 0 35px;
-
+  padding:70px 0 35px;
   text-align:center;
 }
 
 .hero h1{
   font-size:
-    clamp(
-      32px,
-      6vw,
-      62px
-    );
-
-  margin:
-    0 0 12px;
-
+    clamp(32px,6vw,62px);
+  margin:0 0 12px;
   letter-spacing:-1px;
 }
 
 .hero p{
   color:var(--muted);
-
   font-size:18px;
-
-  margin:
-    0 auto 28px;
-
+  margin:0 auto 28px;
   max-width:720px;
 }
 
@@ -1389,10 +966,7 @@ a{
 
 .grid{
   display:grid;
-
-  grid-template-columns:
-    1fr 1fr;
-
+  grid-template-columns:1fr 1fr;
   gap:22px;
 }
 
@@ -1403,15 +977,9 @@ a{
       rgba(16,36,58,.95),
       rgba(10,25,42,.95)
     );
-
-  border:
-    1px solid
-    var(--line);
-
+  border:1px solid var(--line);
   border-radius:22px;
-
   padding:24px;
-
   box-shadow:var(--shadow);
 }
 
@@ -1421,54 +989,38 @@ a{
 
 .card h2{
   margin-top:0;
-
   font-size:22px;
 }
 
 .label{
   display:block;
-
   color:#cbd9e8;
-
   font-size:14px;
-
-  margin:
-    13px 0 6px;
+  margin:13px 0 6px;
 }
 
 input,
 textarea,
 select{
   width:100%;
-
-  border:
-    1px solid
-    #29435e;
-
+  border:1px solid #29435e;
   background:#081523;
-
   color:var(--text);
-
   border-radius:12px;
-
   padding:12px;
-
   font:inherit;
-
   outline:none;
 }
 
 textarea{
   min-height:120px;
-
   resize:vertical;
 }
 
 input:focus,
 textarea:focus,
 select:focus{
-  border-color:
-    var(--green);
+  border-color:var(--green);
 }
 
 .password{
@@ -1481,36 +1033,25 @@ select:focus{
 
 .eye{
   position:absolute;
-
   left:7px;
   top:7px;
-
   height:40px;
   width:40px;
-
   border:0;
-
   background:transparent;
-
   color:#9fb2c7;
-
   cursor:pointer;
 }
 
 .row{
   display:grid;
-
-  grid-template-columns:
-    1fr 1fr;
-
+  grid-template-columns:1fr 1fr;
   gap:12px;
 }
 
 .msg{
   margin-top:12px;
-
   min-height:25px;
-
   color:var(--muted);
 }
 
@@ -1523,12 +1064,8 @@ select:focus{
 }
 
 .idea{
-  border-top:
-    1px solid
-    var(--line);
-
-  padding:
-    18px 0;
+  border-top:1px solid var(--line);
+  padding:18px 0;
 }
 
 .idea:first-child{
@@ -1536,108 +1073,69 @@ select:focus{
 }
 
 .idea h3{
-  margin:
-    0 0 5px;
+  margin:0 0 5px;
 }
 
 .meta{
   color:#7f96ad;
-
   font-size:13px;
 }
 
 .tag{
   display:inline-block;
-
-  border:
-    1px solid
-    #31506e;
-
+  border:1px solid #31506e;
   border-radius:999px;
-
-  padding:
-    2px 9px;
-
-  margin:
-    5px 0;
-
+  padding:2px 9px;
+  margin:5px 0;
   color:#b8cadc;
-
   font-size:12px;
 }
 
 .ad{
   min-height:92px;
-
   display:grid;
-
   place-items:center;
-
-  border:
-    1px dashed
-    #31506e;
-
+  border:1px dashed #31506e;
   border-radius:18px;
-
   color:#7890a7;
-
-  margin:
-    18px 0;
+  margin:18px 0;
 }
 
 .social{
   display:flex;
-
   gap:9px;
-
   flex-wrap:wrap;
 }
 
 .social a{
-  border:
-    1px solid
-    var(--line);
-
-  padding:
-    8px 12px;
-
+  border:1px solid var(--line);
+  padding:8px 12px;
   border-radius:10px;
-
   color:#c9d8e8;
 }
 
 .note{
   color:var(--muted);
-
   font-size:13px;
 }
 
 .hidden{
-  display:none !important;
+  display:none!important;
 }
 
 .modal{
   position:fixed;
-
   inset:0;
-
-  background:
-    rgba(0,0,0,.72);
-
+  background:rgba(0,0,0,.72);
   display:grid;
-
   place-items:center;
-
   padding:18px;
-
   z-index:30;
 }
 
 .modalbox{
   width:min(520px,100%);
-
   max-height:92vh;
-
   overflow:auto;
 }
 
@@ -1647,23 +1145,14 @@ select:focus{
 
 .footer{
   margin-top:45px;
-
-  padding:
-    35px 0;
-
-  border-top:
-    1px solid
-    var(--line);
-
+  padding:35px 0;
+  border-top:1px solid var(--line);
   color:var(--muted);
 }
 
 .footergrid{
   display:grid;
-
-  grid-template-columns:
-    2fr 1fr 1fr;
-
+  grid-template-columns:2fr 1fr 1fr;
   gap:25px;
 }
 
@@ -1700,31 +1189,22 @@ select:focus{
   }
 
   .nav-actions .btn{
-    padding:
-      7px 9px;
-
+    padding:7px 9px;
     font-size:12px;
   }
-
 }
 
 </style>
 
 </head>
 
-
 <body>
-
 
 <header class="top">
 
 <div class="wrap nav">
 
-
-<a
-  class="brand"
-  href="/"
->
+<a class="brand" href="/">
 
 <span class="logo">
 
@@ -1750,12 +1230,9 @@ select:focus{
 
 </span>
 
-<span>
-چیکام
-</span>
+<span>چیکام</span>
 
 </a>
-
 
 <div class="nav-actions">
 
@@ -1764,7 +1241,6 @@ select:focus{
   class="note"
 ></span>
 
-
 <button
   type="button"
   class="btn"
@@ -1772,7 +1248,6 @@ select:focus{
 >
 ثبت‌نام
 </button>
-
 
 <button
   type="button"
@@ -1783,7 +1258,6 @@ select:focus{
 ورود
 </button>
 
-
 <button
   type="button"
   class="btn hidden"
@@ -1792,7 +1266,6 @@ select:focus{
 >
 خروج
 </button>
-
 
 <button
   type="button"
@@ -1808,29 +1281,22 @@ select:focus{
 
 </header>
 
-
 <main class="wrap">
-
 
 <section class="hero">
 
 <h1>
-
 هر ایده
-
 <span class="glow">
 آغاز یک مسیر
 </span>
-
 </h1>
-
 
 <p>
 چیکام محیطی برای ثبت ایده،
 پیدا کردن همراه و تبدیل فکرهای خوب
 به مسیرهای واقعی است.
 </p>
-
 
 <button
   type="button"
@@ -1842,43 +1308,32 @@ select:focus{
 
 </section>
 
-
 <div class="ad">
-
 فضای تبلیغات و معرفی
 — در نسخه عمومی قابل فعال‌سازی است
-
 </div>
 
-
 <section class="grid">
-
 
 <div
   class="card"
   id="ideaCard"
 >
 
-<h2>
-ثبت یک ایده
-</h2>
-
+<h2>ثبت یک ایده</h2>
 
 <p class="note">
 برای ثبت ایده باید وارد حساب کاربری باشید.
 </p>
 
-
 <label class="label">
 عنوان ایده
 </label>
-
 
 <input
   id="ideaTitle"
   placeholder="عنوان کوتاه و روشن ایده"
 >
-
 
 <label
   class="label"
@@ -1887,26 +1342,21 @@ select:focus{
 توضیحات تکمیلی
 </label>
 
-
 <textarea
   id="ideaDescription"
   placeholder="توضیحات تکمیلی درباره ایده، مشکل، هدف، راه‌حل پیشنهادی، مراحل اجرا، نیازمندی‌ها و سایر نکات مهم را وارد کنید."
 ></textarea>
 
-
 <label class="label">
 راه‌حل یا پیشنهاد
 </label>
-
 
 <textarea
   id="ideaSolution"
   placeholder="راه‌حل یا پیشنهاد شما"
 ></textarea>
 
-
 <div class="row">
-
 
 <div>
 
@@ -1921,17 +1371,13 @@ select:focus{
 
 </div>
 
-
 <div>
 
 <label class="label">
 نوع مشارکت
 </label>
 
-
-<select
-  id="participationType"
->
+<select id="participationType">
 
 <option value="">
 نوع مشارکت را انتخاب کنید
@@ -1959,7 +1405,6 @@ select:focus{
 
 </div>
 
-
 <button
   type="button"
   class="btn primary"
@@ -1969,7 +1414,6 @@ select:focus{
 ثبت ایده
 </button>
 
-
 <div
   id="ideaMessage"
   class="msg"
@@ -1977,13 +1421,11 @@ select:focus{
 
 </div>
 
-
 <div class="card">
 
 <h2>
 درباره چیکام
 </h2>
-
 
 <p>
 چیکام فقط محلی برای نمایش ایده‌ها نیست.
@@ -1992,7 +1434,6 @@ select:focus{
 همراه مناسب جذب کند و
 مرحله‌به‌مرحله رشد کند.
 </p>
-
 
 <p class="note">
 هر ایده آغاز یک مسیر است؛
@@ -2003,13 +1444,11 @@ select:focus{
 
 </div>
 
-
 <div class="card wide">
 
 <h2>
 ایده‌های اخیر
 </h2>
-
 
 <div id="ideasList">
 
@@ -2021,16 +1460,13 @@ select:focus{
 
 </div>
 
-
 </section>
 
 </main>
 
-
 <footer class="footer">
 
 <div class="wrap footergrid">
-
 
 <div>
 
@@ -2060,12 +1496,9 @@ select:focus{
 
 </span>
 
-<span>
-چیکام
-</span>
+<span>چیکام</span>
 
 </div>
-
 
 <p>
 هر ایده آغاز یک مسیر.
@@ -2073,19 +1506,16 @@ select:focus{
 
 </div>
 
-
 <div>
 
 <b>
 شبکه‌های اجتماعی
 </b>
 
-
 <p class="small">
 پس از مشخص شدن حساب‌های رسمی چیکام،
 لینک‌های واقعی این بخش قرار می‌گیرند.
 </p>
-
 
 <div class="social">
 
@@ -2114,7 +1544,6 @@ X
 
 </div>
 
-
 <div>
 
 <b>
@@ -2135,20 +1564,16 @@ X
 
 </div>
 
-
 </div>
 
 </footer>
-
 
 <div
   id="modal"
   class="modal hidden"
 >
 
-<div
-  class="card modalbox"
->
+<div class="card modalbox">
 
 <button
   type="button"
@@ -2158,15 +1583,11 @@ X
 بستن
 </button>
 
-
-<div
-  id="modalContent"
-></div>
+<div id="modalContent"></div>
 
 </div>
 
 </div>
-
 
 <script>
 
@@ -2174,22 +1595,18 @@ function byId(id) {
   return document.getElementById(id);
 }
 
-
 function showModal(html) {
   byId("modalContent").innerHTML = html;
   byId("modal").classList.remove("hidden");
 }
 
-
 function closeModal() {
   byId("modal").classList.add("hidden");
 }
 
-
 function togglePassword(id) {
 
-  var input =
-    byId(id);
+  var input = byId(id);
 
   if (!input) {
     return;
@@ -2201,7 +1618,6 @@ function togglePassword(id) {
       : "password";
 }
 
-
 function openRegister() {
 
   showModal(
@@ -2212,35 +1628,43 @@ function openRegister() {
     'نام کاربری و رمز عبور الزامی است. شماره تلفن و ایمیل اختیاری هستند.' +
     '</p>' +
 
-    '<label class="label">' +
-    'نام کاربری' +
-    '</label>' +
+    '<label class="label">نام کاربری</label>' +
 
-    '<input id="rUser" autocomplete="username">' +
+    '<input ' +
+    'id="rUser" ' +
+    'autocomplete="username">' +
 
-    '<label class="label">' +
-    'رمز عبور' +
-    '</label>' +
+    '<label class="label">رمز عبور</label>' +
 
     '<div class="password">' +
 
-    '<input id="rPass" type="password" autocomplete="new-password">' +
+    '<input ' +
+    'id="rPass" ' +
+    'type="password" ' +
+    'autocomplete="new-password">' +
 
-    '<button type="button" class="eye" onclick="togglePassword(\\'rPass\\')">' +
+    '<button ' +
+    'type="button" ' +
+    'class="eye" ' +
+    'onclick="togglePassword(\'rPass\')">' +
     '◉' +
     '</button>' +
 
     '</div>' +
 
-    '<label class="label">' +
-    'تکرار رمز عبور' +
-    '</label>' +
+    '<label class="label">تکرار رمز عبور</label>' +
 
     '<div class="password">' +
 
-    '<input id="rConfirm" type="password" autocomplete="new-password">' +
+    '<input ' +
+    'id="rConfirm" ' +
+    'type="password" ' +
+    'autocomplete="new-password">' +
 
-    '<button type="button" class="eye" onclick="togglePassword(\\'rConfirm\\')">' +
+    '<button ' +
+    'type="button" ' +
+    'class="eye" ' +
+    'onclick="togglePassword(\'rConfirm\')">' +
     '◉' +
     '</button>' +
 
@@ -2250,24 +1674,30 @@ function openRegister() {
     'شماره تلفن (اختیاری)' +
     '</label>' +
 
-    '<input id="rPhone" autocomplete="tel">' +
+    '<input ' +
+    'id="rPhone" ' +
+    'autocomplete="tel">' +
 
     '<label class="label">' +
     'ایمیل (اختیاری)' +
     '</label>' +
 
-    '<input id="rEmail" type="email" autocomplete="email">' +
+    '<input ' +
+    'id="rEmail" ' +
+    'type="email" ' +
+    'autocomplete="email">' +
 
-    '<button type="button" class="btn primary" style="margin-top:15px" onclick="registerUser()">' +
+    '<button ' +
+    'type="button" ' +
+    'class="btn primary" ' +
+    'style="margin-top:15px" ' +
+    'onclick="registerUser()">' +
     'ایجاد حساب' +
     '</button>' +
 
     '<div id="rMsg" class="msg"></div>'
-
   );
-
 }
-
 
 function openLogin() {
 
@@ -2279,7 +1709,9 @@ function openLogin() {
     'نام کاربری' +
     '</label>' +
 
-    '<input id="lUser" autocomplete="username">' +
+    '<input ' +
+    'id="lUser" ' +
+    'autocomplete="username">' +
 
     '<label class="label">' +
     'رمز عبور' +
@@ -2287,24 +1719,31 @@ function openLogin() {
 
     '<div class="password">' +
 
-    '<input id="lPass" type="password" autocomplete="current-password">' +
+    '<input ' +
+    'id="lPass" ' +
+    'type="password" ' +
+    'autocomplete="current-password">' +
 
-    '<button type="button" class="eye" onclick="togglePassword(\\'lPass\\')">' +
+    '<button ' +
+    'type="button" ' +
+    'class="eye" ' +
+    'onclick="togglePassword(\'lPass\')">' +
     '◉' +
     '</button>' +
 
     '</div>' +
 
-    '<button type="button" class="btn primary" style="margin-top:15px" onclick="loginUser()">' +
+    '<button ' +
+    'type="button" ' +
+    'class="btn primary" ' +
+    'style="margin-top:15px" ' +
+    'onclick="loginUser()">' +
     'ورود' +
     '</button>' +
 
     '<div id="lMsg" class="msg"></div>'
-
   );
-
 }
-
 
 function openAdmin() {
 
@@ -2316,7 +1755,9 @@ function openAdmin() {
     'نام کاربری مدیریت' +
     '</label>' +
 
-    '<input id="aUser" autocomplete="username">' +
+    '<input ' +
+    'id="aUser" ' +
+    'autocomplete="username">' +
 
     '<label class="label">' +
     'رمز مدیریت' +
@@ -2324,87 +1765,80 @@ function openAdmin() {
 
     '<div class="password">' +
 
-    '<input id="aPass" type="password">' +
+    '<input ' +
+    'id="aPass" ' +
+    'type="password" ' +
+    'autocomplete="current-password">' +
 
-    '<button type="button" class="eye" onclick="togglePassword(\\'aPass\\')">' +
+    '<button ' +
+    'type="button" ' +
+    'class="eye" ' +
+    'onclick="togglePassword(\'aPass\')">' +
     '◉' +
     '</button>' +
 
     '</div>' +
 
-    '<button type="button" class="btn primary" style="margin-top:15px" onclick="adminLogin()">' +
+    '<button ' +
+    'type="button" ' +
+    'class="btn primary" ' +
+    'style="margin-top:15px" ' +
+    'onclick="adminLogin()">' +
     'ورود مدیریت' +
     '</button>' +
 
     '<div id="aMsg" class="msg"></div>'
-
   );
-
 }
-
 
 async function registerUser() {
 
-  var msg =
-    byId("rMsg");
+  var msg = byId("rMsg");
 
-  msg.className =
-    "msg";
-
-  msg.textContent =
-    "در حال ثبت...";
-
+  msg.className = "msg";
+  msg.textContent = "در حال ثبت...";
 
   try {
 
-    var response =
-      await fetch(
-        "/register",
-        {
-          method: "POST",
+    var response = await fetch(
+      "/register",
+      {
+        method: "POST",
 
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
 
-          body:
-            JSON.stringify({
+        body: JSON.stringify({
+          username:
+            byId("rUser").value,
 
-              username:
-                byId("rUser").value,
+          password:
+            byId("rPass").value,
 
-              password:
-                byId("rPass").value,
+          confirmPassword:
+            byId("rConfirm").value,
 
-              confirmPassword:
-                byId("rConfirm").value,
+          phone:
+            byId("rPhone").value,
 
-              phone:
-                byId("rPhone").value,
-
-              email:
-                byId("rEmail").value
-
-            })
-
-        }
-      );
-
+          email:
+            byId("rEmail").value
+        })
+      }
+    );
 
     var data =
       await response.json();
 
-
     msg.textContent =
       data.message || "";
-
 
     msg.className =
       response.ok
         ? "msg ok"
         : "msg err";
-
 
     if (response.ok) {
 
@@ -2414,98 +1848,83 @@ async function registerUser() {
         },
         700
       );
-
     }
 
   } catch (error) {
+
+    console.error(
+      "REGISTER CLIENT ERROR:",
+      error
+    );
 
     msg.textContent =
       "ارتباط با سرور برقرار نشد.";
 
     msg.className =
       "msg err";
-
   }
-
 }
-
 
 async function loginUser() {
 
-  var msg =
-    byId("lMsg");
+  var msg = byId("lMsg");
 
-  msg.className =
-    "msg";
-
-  msg.textContent =
-    "در حال ورود...";
-
+  msg.className = "msg";
+  msg.textContent = "در حال ورود...";
 
   try {
 
-    var response =
-      await fetch(
-        "/login",
-        {
-          method: "POST",
+    var response = await fetch(
+      "/login",
+      {
+        method: "POST",
 
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
 
-          body:
-            JSON.stringify({
+        body: JSON.stringify({
+          username:
+            byId("lUser").value,
 
-              username:
-                byId("lUser").value,
-
-              password:
-                byId("lPass").value
-
-            })
-
-        }
-      );
-
+          password:
+            byId("lPass").value
+        })
+      }
+    );
 
     var data =
       await response.json();
 
-
     msg.textContent =
       data.message || "";
-
 
     msg.className =
       response.ok
         ? "msg ok"
         : "msg err";
 
-
     if (response.ok) {
 
       closeModal();
-
       refreshMe();
-
     }
 
   } catch (error) {
+
+    console.error(
+      "LOGIN CLIENT ERROR:",
+      error
+    );
 
     msg.textContent =
       "ارتباط با سرور برقرار نشد.";
 
     msg.className =
       "msg err";
-
   }
-
-}
-
-
-async function logout() {
+}async function logout() {
 
   try {
 
@@ -2521,9 +1940,7 @@ async function logout() {
     refreshMe();
 
   }
-
 }
-
 
 async function refreshMe() {
 
@@ -2535,50 +1952,30 @@ async function refreshMe() {
     var data =
       await response.json();
 
-
     if (data.loggedIn) {
 
-      byId(
-        "navUser"
-      ).textContent =
-        "سلام، " +
-        data.username;
+      byId("navUser").textContent =
+        "سلام، " + data.username;
 
+      byId("loginBtn")
+        .classList
+        .add("hidden");
 
-      byId(
-        "loginBtn"
-      ).classList.add(
-        "hidden"
-      );
-
-
-      byId(
-        "logoutBtn"
-      ).classList.remove(
-        "hidden"
-      );
+      byId("logoutBtn")
+        .classList
+        .remove("hidden");
 
     } else {
 
-      byId(
-        "navUser"
-      ).textContent =
-        "";
+      byId("navUser").textContent = "";
 
+      byId("loginBtn")
+        .classList
+        .remove("hidden");
 
-      byId(
-        "loginBtn"
-      ).classList.remove(
-        "hidden"
-      );
-
-
-      byId(
-        "logoutBtn"
-      ).classList.add(
-        "hidden"
-      );
-
+      byId("logoutBtn")
+        .classList
+        .add("hidden");
     }
 
   } catch (error) {
@@ -2589,21 +1986,16 @@ async function refreshMe() {
     );
 
   }
-
 }
-
 
 async function submitIdea() {
 
   var msg =
     byId("ideaMessage");
 
-  msg.className =
-    "msg";
-
+  msg.className = "msg";
   msg.textContent =
     "در حال ثبت...";
-
 
   try {
 
@@ -2618,77 +2010,51 @@ async function submitIdea() {
               "application/json"
           },
 
-          body:
-            JSON.stringify({
+          body: JSON.stringify({
 
-              title:
-                byId("ideaTitle").value,
+            title:
+              byId("ideaTitle").value,
 
-              description:
-                byId(
-                  "ideaDescription"
-                ).value,
+            description:
+              byId("ideaDescription").value,
 
-              solution:
-                byId(
-                  "ideaSolution"
-                ).value,
+            solution:
+              byId("ideaSolution").value,
 
-              category:
-                byId(
-                  "ideaCategory"
-                ).value,
+            category:
+              byId("ideaCategory").value,
 
-              participationType:
-                byId(
-                  "participationType"
-                ).value
+            participationType:
+              byId("participationType").value
 
-            })
-
+          })
         }
       );
-
 
     var data =
       await response.json();
 
-
     msg.textContent =
       data.message || "";
-
 
     msg.className =
       response.ok
         ? "msg ok"
         : "msg err";
 
-
     if (response.ok) {
 
-      byId(
-        "ideaTitle"
-      ).value = "";
+      byId("ideaTitle").value = "";
 
-      byId(
-        "ideaDescription"
-      ).value = "";
+      byId("ideaDescription").value = "";
 
-      byId(
-        "ideaSolution"
-      ).value = "";
+      byId("ideaSolution").value = "";
 
-      byId(
-        "ideaCategory"
-      ).value = "";
+      byId("ideaCategory").value = "";
 
-      byId(
-        "participationType"
-      ).value = "";
-
+      byId("participationType").value = "";
 
       loadIdeas();
-
     }
 
   } catch (error) {
@@ -2698,17 +2064,13 @@ async function submitIdea() {
 
     msg.className =
       "msg err";
-
   }
-
 }
-
 
 async function loadIdeas() {
 
   var box =
     byId("ideasList");
-
 
   try {
 
@@ -2717,7 +2079,6 @@ async function loadIdeas() {
 
     var data =
       await response.json();
-
 
     if (
       !data.ok ||
@@ -2730,9 +2091,7 @@ async function loadIdeas() {
         '</p>';
 
       return;
-
     }
-
 
     box.innerHTML =
       data.ideas
@@ -2748,7 +2107,6 @@ async function loadIdeas() {
                   '</span> '
                 : "";
 
-
             var participation =
               idea.participation_type
                 ? '<span class="tag">' +
@@ -2758,7 +2116,6 @@ async function loadIdeas() {
                   '</span>'
                 : "";
 
-
             var description =
               idea.description
                 ? '<p>' +
@@ -2767,7 +2124,6 @@ async function loadIdeas() {
                   ) +
                   '</p>'
                 : "";
-
 
             return (
 
@@ -2821,55 +2177,43 @@ async function loadIdeas() {
       '<p class="msg err">' +
       'دریافت ایده‌ها ممکن نشد.' +
       '</p>';
-
   }
-
 }
-
 
 function escapeHtml(value) {
 
   return String(
     value || ""
   ).replace(
-    /[&<>\"']/g,
+    /[&<>"']/g,
     function(character) {
 
       return {
-        "&":
-          "&amp;",
 
-        "<":
-          "&lt;",
+        "&": "&amp;",
 
-        ">":
-          "&gt;",
+        "<": "&lt;",
 
-        "\"":
-          "&quot;",
+        ">": "&gt;",
 
-        "'":
-          "&#039;"
+        '"': "&quot;",
+
+        "'": "&#039;"
 
       }[character];
 
     }
   );
-
 }
-
 
 async function adminLogin() {
 
   var msg =
     byId("aMsg");
 
-  msg.className =
-    "msg";
-
+  msg.className = "msg";
   msg.textContent =
     "در حال ورود...";
-
 
   try {
 
@@ -2884,24 +2228,20 @@ async function adminLogin() {
               "application/json"
           },
 
-          body:
-            JSON.stringify({
+          body: JSON.stringify({
 
-              username:
-                byId("aUser").value,
+            username:
+              byId("aUser").value,
 
-              password:
-                byId("aPass").value
+            password:
+              byId("aPass").value
 
-            })
-
+          })
         }
       );
 
-
     var data =
       await response.json();
-
 
     if (!response.ok) {
 
@@ -2913,41 +2253,35 @@ async function adminLogin() {
         "msg err";
 
       return;
-
     }
-
 
     window.location.href =
       "/admin";
 
   } catch (error) {
 
+    console.error(
+      "ADMIN LOGIN CLIENT ERROR:",
+      error
+    );
+
     msg.textContent =
       "ارتباط با سرور برقرار نشد.";
 
     msg.className =
       "msg err";
-
   }
-
 }
-
 
 function focusIdea() {
 
-  byId(
-    "ideaCard"
-  ).scrollIntoView({
-    behavior:
-      "smooth"
-  });
-
+  byId("ideaCard")
+    .scrollIntoView({
+      behavior: "smooth"
+    });
 }
 
-
-byId(
-  "modal"
-).addEventListener(
+byId("modal").addEventListener(
   "click",
   function(event) {
 
@@ -2963,7 +2297,6 @@ byId(
   }
 );
 
-
 refreshMe();
 
 loadIdeas();
@@ -2975,39 +2308,23 @@ loadIdeas();
 </html>`;
 }
 
+app.get("/", (req, res) => {
 
-/* =========================
-   HOME
-========================= */
+  res
+    .type("html")
+    .send(page());
 
-app.get(
-  "/",
-  (req, res) => {
+});
 
-    res
-      .type("html")
-      .send(page());
+app.get("/admin", (req, res) => {
+
+  if (!getAdmin(req)) {
+
+    return res.redirect("/");
 
   }
-);
 
-
-/* =========================
-   ADMIN PAGE
-========================= */
-
-app.get(
-  "/admin",
-  (req, res) => {
-
-    if (!getAdmin(req)) {
-      return res.redirect("/");
-    }
-
-
-    res
-      .type("html")
-      .send(`<!doctype html>
+  res.type("html").send(`<!doctype html>
 
 <html
   lang="fa"
@@ -3027,10 +2344,10 @@ app.get(
 مدیریت چیکام
 </title>
 
-
 <style>
 
 body{
+
   margin:0;
 
   background:#07111f;
@@ -3042,60 +2359,65 @@ body{
     Arial;
 
   padding:25px;
+
 }
 
 .box{
+
   max-width:1100px;
 
   margin:auto;
 
   background:#0d1b2d;
 
-  border:
-    1px solid
-    #203751;
+  border:1px solid #203751;
 
   border-radius:20px;
 
   padding:25px;
+
 }
 
 table{
+
   width:100%;
 
-  border-collapse:collapse;
+  border-collapse:
+    collapse;
 
   margin:20px 0;
+
 }
 
 th,
 td{
+
   padding:9px;
 
   border-bottom:
-    1px solid
-    #203751;
+    1px solid #203751;
 
   text-align:right;
+
 }
 
 button{
+
   background:#31d07c;
 
   border:0;
 
-  padding:
-    10px 15px;
+  padding:10px 15px;
 
   border-radius:10px;
 
   cursor:pointer;
+
 }
 
 </style>
 
 </head>
-
 
 <body>
 
@@ -3105,7 +2427,6 @@ button{
 پنل مدیریت چیکام
 </h1>
 
-
 <button
   type="button"
   onclick="logoutAdmin()"
@@ -3113,13 +2434,11 @@ button{
 خروج
 </button>
 
-
 <div id="data">
 در حال دریافت اطلاعات...
 </div>
 
 </div>
-
 
 <script>
 
@@ -3132,11 +2451,8 @@ async function logoutAdmin() {
     }
   );
 
-  location.href =
-    "/";
-
+  location.href = "/";
 }
-
 
 function escapeAdmin(value) {
 
@@ -3145,33 +2461,26 @@ function escapeAdmin(value) {
       ? ""
       : value
   ).replace(
-    /[&<>\"']/g,
+    /[&<>"']/g,
     function(character) {
 
       return {
 
-        "&":
-          "&amp;",
+        "&":"&amp;",
 
-        "<":
-          "&lt;",
+        "<":"&lt;",
 
-        ">":
-          "&gt;",
+        ">":"&gt;",
 
-        "\"":
-          "&quot;",
+        '"':"&quot;",
 
-        "'":
-          "&#039;"
+        "'":"&#039;"
 
       }[character];
 
     }
   );
-
 }
-
 
 function createTable(
   rows,
@@ -3179,13 +2488,11 @@ function createTable(
 ) {
 
   if (!rows.length) {
-    return (
-      "<p>" +
-      "موردی وجود ندارد." +
-      "</p>"
-    );
-  }
 
+    return
+      "<p>موردی وجود ندارد.</p>";
+
+  }
 
   return (
 
@@ -3222,11 +2529,15 @@ function createTable(
                 function(key) {
 
                   return (
+
                     "<td>" +
+
                     escapeAdmin(
                       row[key]
                     ) +
+
                     "</td>"
+
                   );
 
                 }
@@ -3244,89 +2555,108 @@ function createTable(
     "</table>"
 
   );
-
 }
-
 
 async function loadAdmin() {
 
-  var response =
-    await fetch(
-      "/admin/panel"
+  try {
+
+    var response =
+      await fetch(
+        "/admin/panel"
+      );
+
+    if (!response.ok) {
+
+      location.href = "/";
+
+      return;
+
+    }
+
+    var data =
+      await response.json();
+
+    document.getElementById(
+      "data"
+    ).innerHTML =
+
+      "<h2>" +
+      "کاربران (" +
+      data.users.length +
+      ")" +
+      "</h2>" +
+
+      createTable(
+
+        data.users,
+
+        [
+          "id",
+          "username",
+          "phone",
+          "email",
+          "created_at"
+        ]
+
+      ) +
+
+      "<h2>" +
+      "ایده‌ها (" +
+      data.ideas.length +
+      ")" +
+      "</h2>" +
+
+      createTable(
+
+        data.ideas,
+
+        [
+          "id",
+          "title",
+          "category",
+          "participation_type",
+          "username",
+          "created_at"
+        ]
+
+      ) +
+
+      "<h2>" +
+      "تبلیغات (" +
+      data.ads.length +
+      ")" +
+      "</h2>" +
+
+      createTable(
+
+        data.ads,
+
+        [
+          "id",
+          "title",
+          "username",
+          "created_at"
+        ]
+
+      );
+
+  } catch (error) {
+
+    console.error(
+      "ADMIN PAGE ERROR:",
+      error
     );
 
-
-  if (!response.ok) {
-
-    location.href =
-      "/";
-
-    return;
+    document.getElementById(
+      "data"
+    ).innerHTML =
+      "<p>" +
+      "دریافت اطلاعات مدیریت انجام نشد." +
+      "</p>";
 
   }
-
-
-  var data =
-    await response.json();
-
-
-  document.getElementById(
-    "data"
-  ).innerHTML =
-
-    "<h2>" +
-    "کاربران (" +
-    data.users.length +
-    ")" +
-    "</h2>" +
-
-    createTable(
-      data.users,
-      [
-        "id",
-        "username",
-        "phone",
-        "email",
-        "created_at"
-      ]
-    ) +
-
-    "<h2>" +
-    "ایده‌ها (" +
-    data.ideas.length +
-    ")" +
-    "</h2>" +
-
-    createTable(
-      data.ideas,
-      [
-        "id",
-        "title",
-        "category",
-        "participation_type",
-        "username",
-        "created_at"
-      ]
-    ) +
-
-    "<h2>" +
-    "تبلیغات (" +
-    data.ads.length +
-    ")" +
-    "</h2>" +
-
-    createTable(
-      data.ads,
-      [
-        "id",
-        "title",
-        "username",
-        "created_at"
-      ]
-    );
-
 }
-
 
 loadAdmin();
 
@@ -3336,39 +2666,28 @@ loadAdmin();
 
 </html>`);
 
-  }
-);
-
-
-/* =========================
-   404
-========================= */
+});
 
 app.use(
   (req, res) => {
 
-    res
-      .status(404)
-      .json({
-        ok:false,
-        message:
-          "Not found",
-      });
+    res.status(404).json({
+
+      ok:false,
+
+      message:
+        "Not found",
+
+    });
 
   }
 );
-
-
-/* =========================
-   START
-========================= */
 
 async function start() {
 
   try {
 
     await initDb();
-
 
     app.listen(
       PORT,
@@ -3395,6 +2714,5 @@ async function start() {
   }
 
 }
-
 
 start();
