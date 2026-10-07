@@ -62,10 +62,6 @@ async function initDatabase() {
     ADD COLUMN IF NOT EXISTS email VARCHAR(255);
   `);
 
-  await pool.query(`
-    ALTER TABLE users
-    ALTER COLUMN phone DROP NOT NULL;
-  `);
 
   console.log("DATABASE READY");
 }
