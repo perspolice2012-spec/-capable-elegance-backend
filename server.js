@@ -23,7 +23,8 @@ async function initDatabase() {
       id SERIAL PRIMARY KEY,
       username VARCHAR(100) UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
-      phone VARCHAR(30) UNIQUE NOT NULL,
+      phone VARCHAR(30) UNIQUE,
+      email VARCHAR(255) UNIQUE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -47,13 +48,23 @@ async function initDatabase() {
     );
   `);
 
-  /* 
-     Compatibility with an older ideas table.
-     If username is already present, nothing changes.
-  */
+  /* =========================
+     OLD DATABASE COMPATIBILITY
+  ========================= */
+
   await pool.query(`
     ALTER TABLE ideas
     ADD COLUMN IF NOT EXISTS username VARCHAR(100);
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS email VARCHAR(255);
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ALTER COLUMN phone DROP NOT NULL;
   `);
 
   console.log("DATABASE READY");
@@ -137,9 +148,15 @@ app.get("/", async (req, res) => {
     res.send(`
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
+
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+>
 
 <title>CHIKAM | چیکام</title>
 
@@ -304,6 +321,7 @@ textarea {
   background: transparent;
   cursor: pointer;
   font-size: 18px;
+  padding: 0;
 }
 
 .buttons {
@@ -401,6 +419,63 @@ footer {
   padding: 25px;
 }
 
+/* =========================
+   REGISTER MODAL
+========================= */
+
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(15,23,42,.55);
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+.modal-box {
+  width: 100%;
+  max-width: 460px;
+  max-height: 92vh;
+  overflow-y: auto;
+  background: white;
+  border-radius: 22px;
+  padding: 26px;
+  box-shadow: 0 25px 70px rgba(0,0,0,.2);
+  position: relative;
+}
+
+.modal-box h2 {
+  margin-top: 0;
+}
+
+.modal-note {
+  font-size: 12px;
+  color: #7b8495;
+  line-height: 1.8;
+  margin-bottom: 18px;
+}
+
+.optional {
+  color: #8a93a4;
+  font-size: 11px;
+  margin-right: 5px;
+}
+
+.close-modal {
+  position: absolute;
+  left: 16px;
+  top: 14px;
+  background: #edf1f8;
+  color: #4d5870;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 18px;
+}
+
 @media (max-width: 760px) {
 
   .grid {
@@ -423,11 +498,13 @@ footer {
 }
 
 </style>
+
 </head>
 
 <body>
 
 <header>
+
   <div class="header-inner">
 
     <div class="logo">
@@ -442,6 +519,7 @@ footer {
     </a>
 
   </div>
+
 </header>
 
 <section class="hero">
@@ -514,7 +592,7 @@ footer {
 
         <button
           class="secondary"
-          onclick="registerUser()"
+          onclick="openRegister()"
         >
           ثبت‌نام
         </button>
@@ -624,7 +702,94 @@ footer {
   CHIKAM — هر ایده آغاز یک مسیر
 </footer>
 
+
+<!-- =========================
+     REGISTER MODAL
+========================= -->
+
+<div
+  id="registerModal"
+  class="modal"
+>
+
+  <div class="modal-box">
+
+    <button
+      class="close-modal"
+      type="button"
+      onclick="closeRegister()"
+    >
+      ×
+    </button>
+
+    <h2>
+      ایجاد حساب کاربری
+    </h2>
+
+    <div class="modal-note">
+      نام کاربری و رمز عبور الزامی است.
+      شماره تلفن و ایمیل اختیاری هستند و می‌توانید
+      بعداً نیز اطلاعات حساب خود را تکمیل کنید.
+    </div>
+
+    <input
+      id="registerUsername"
+      type="text"
+      placeholder="نام کاربری"
+      autocomplete="username"
+    >
+
+    <input
+      id="registerPassword"
+      type="password"
+      placeholder="رمز عبور"
+      autocomplete="new-password"
+    >
+
+    <input
+      id="registerPasswordConfirm"
+      type="password"
+      placeholder="تکرار رمز عبور"
+      autocomplete="new-password"
+    >
+
+    <input
+      id="registerPhone"
+      type="tel"
+      placeholder="شماره تلفن (اختیاری)"
+      autocomplete="tel"
+    >
+
+    <input
+      id="registerEmail"
+      type="email"
+      placeholder="ایمیل (اختیاری)"
+      autocomplete="email"
+    >
+
+    <button
+      class="primary"
+      style="width:100%;"
+      onclick="submitRegistration()"
+    >
+      ثبت‌نام
+    </button>
+
+    <div
+      id="registerMessage"
+      class="message"
+    ></div>
+
+  </div>
+
+</div>
+
+
 <script>
+
+/* =========================
+   PASSWORD
+========================= */
 
 function togglePassword() {
 
@@ -639,24 +804,79 @@ function togglePassword() {
 
 
 /* =========================
-   REGISTER
+   REGISTER MODAL
 ========================= */
 
-async function registerUser() {
+function openRegister() {
+
+  document
+    .getElementById("registerModal")
+    .style.display = "flex";
+
+  document
+    .getElementById("registerUsername")
+    .focus();
+
+}
+
+function closeRegister() {
+
+  document
+    .getElementById("registerModal")
+    .style.display = "none";
+
+}
+
+window.addEventListener("click", function(event) {
+
+  const modal =
+    document.getElementById("registerModal");
+
+  if (event.target === modal) {
+
+    closeRegister();
+
+  }
+
+});
+
+
+/* =========================
+   SUBMIT REGISTRATION
+========================= */
+
+async function submitRegistration() {
 
   const username =
     document
-      .getElementById("username")
+      .getElementById("registerUsername")
       .value
       .trim();
 
   const password =
     document
-      .getElementById("password")
+      .getElementById("registerPassword")
       .value;
 
+  const passwordConfirm =
+    document
+      .getElementById("registerPasswordConfirm")
+      .value;
+
+  const phone =
+    document
+      .getElementById("registerPhone")
+      .value
+      .trim();
+
+  const email =
+    document
+      .getElementById("registerEmail")
+      .value
+      .trim();
+
   const message =
-    document.getElementById("authMessage");
+    document.getElementById("registerMessage");
 
   message.textContent = "";
 
@@ -664,14 +884,6 @@ async function registerUser() {
 
     message.textContent =
       "لطفاً نام کاربری را وارد کنید.";
-
-    return;
-  }
-
-  if (!password) {
-
-    message.textContent =
-      "لطفاً رمز عبور را وارد کنید.";
 
     return;
   }
@@ -684,6 +896,14 @@ async function registerUser() {
     return;
   }
 
+  if (!password) {
+
+    message.textContent =
+      "لطفاً رمز عبور را وارد کنید.";
+
+    return;
+  }
+
   if (password.length < 4) {
 
     message.textContent =
@@ -692,16 +912,35 @@ async function registerUser() {
     return;
   }
 
-  const phone = prompt(
-    "برای تکمیل ثبت‌نام، شماره تلفن خود را وارد کنید:"
-  );
-
-  if (!phone) {
+  if (!passwordConfirm) {
 
     message.textContent =
-      "ثبت‌نام لغو شد؛ شماره تلفن وارد نشده است.";
+      "لطفاً تکرار رمز عبور را وارد کنید.";
 
     return;
+  }
+
+  if (password !== passwordConfirm) {
+
+    message.textContent =
+      "رمز عبور و تکرار آن یکسان نیست.";
+
+    return;
+  }
+
+  if (email) {
+
+    const emailPattern =
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailPattern.test(email)) {
+
+      message.textContent =
+        "لطفاً یک ایمیل معتبر وارد کنید.";
+
+      return;
+    }
+
   }
 
   try {
@@ -717,9 +956,13 @@ async function registerUser() {
         },
 
         body: JSON.stringify({
+
           username,
           password,
-          phone: phone.trim()
+          passwordConfirm,
+          phone: phone || null,
+          email: email || null
+
         })
 
       });
@@ -734,8 +977,31 @@ async function registerUser() {
     if (response.ok) {
 
       document
+        .getElementById("username")
+        .value = username;
+
+      document
         .getElementById("password")
         .value = "";
+
+      document
+        .getElementById("registerPassword")
+        .value = "";
+
+      document
+        .getElementById("registerPasswordConfirm")
+        .value = "";
+
+      setTimeout(() => {
+
+        closeRegister();
+
+        document
+          .getElementById("authMessage")
+          .textContent =
+          "ثبت‌نام با موفقیت انجام شد. اکنون می‌توانید وارد شوید.";
+
+      }, 900);
 
     }
 
@@ -951,15 +1217,17 @@ app.post("/register", async (req, res) => {
     const {
       username,
       password,
-      phone
+      passwordConfirm,
+      phone,
+      email
     } = req.body;
 
-    if (!username || !password || !phone) {
+    if (!username || !password || !passwordConfirm) {
 
       return res.status(400).json({
 
         message:
-          "نام کاربری، رمز عبور و شماره تلفن الزامی است."
+          "نام کاربری، رمز عبور و تکرار رمز عبور الزامی است."
 
       });
 
@@ -969,7 +1237,14 @@ app.post("/register", async (req, res) => {
       username.trim();
 
     const cleanPhone =
-      phone.trim();
+      phone
+        ? String(phone).trim()
+        : null;
+
+    const cleanEmail =
+      email
+        ? String(email).trim().toLowerCase()
+        : null;
 
     if (cleanUsername.length < 3) {
 
@@ -993,6 +1268,37 @@ app.post("/register", async (req, res) => {
 
     }
 
+    if (password !== passwordConfirm) {
+
+      return res.status(400).json({
+
+        message:
+          "رمز عبور و تکرار آن یکسان نیست."
+
+      });
+
+    }
+
+    if (cleanEmail) {
+
+      const emailPattern =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (!emailPattern.test(cleanEmail)) {
+
+        return res.status(400).json({
+
+          message:
+            "ایمیل واردشده معتبر نیست."
+
+        });
+
+      }
+
+    }
+
+    /* USERNAME CHECK */
+
     const usernameCheck =
       await pool.query(
         "SELECT id FROM users WHERE username = $1",
@@ -1010,20 +1316,49 @@ app.post("/register", async (req, res) => {
 
     }
 
-    const phoneCheck =
-      await pool.query(
-        "SELECT id FROM users WHERE phone = $1",
-        [cleanPhone]
-      );
+    /* PHONE CHECK */
 
-    if (phoneCheck.rows.length > 0) {
+    if (cleanPhone) {
 
-      return res.status(409).json({
+      const phoneCheck =
+        await pool.query(
+          "SELECT id FROM users WHERE phone = $1",
+          [cleanPhone]
+        );
 
-        message:
-          "این شماره تلفن قبلاً برای یک حساب استفاده شده است."
+      if (phoneCheck.rows.length > 0) {
 
-      });
+        return res.status(409).json({
+
+          message:
+            "این شماره تلفن قبلاً برای یک حساب استفاده شده است."
+
+        });
+
+      }
+
+    }
+
+    /* EMAIL CHECK */
+
+    if (cleanEmail) {
+
+      const emailCheck =
+        await pool.query(
+          "SELECT id FROM users WHERE email = $1",
+          [cleanEmail]
+        );
+
+      if (emailCheck.rows.length > 0) {
+
+        return res.status(409).json({
+
+          message:
+            "این ایمیل قبلاً برای یک حساب استفاده شده است."
+
+        });
+
+      }
 
     }
 
@@ -1036,14 +1371,17 @@ app.post("/register", async (req, res) => {
       (
         username,
         password_hash,
-        phone
+        phone,
+        email
       )
-      VALUES ($1, $2, $3)
+      VALUES
+      ($1, $2, $3, $4)
       `,
       [
         cleanUsername,
         passwordHash,
-        cleanPhone
+        cleanPhone,
+        cleanEmail
       ]
     );
 
@@ -1820,26 +2158,11 @@ ${ads.rows[0].count}
 function escapeHTML(value) {
 
   return String(value ?? "")
-    .replace(
-      /&/g,
-      "&amp;"
-    )
-    .replace(
-      /</g,
-      "&lt;"
-    )
-    .replace(
-      />/g,
-      "&gt;"
-    )
-    .replace(
-      /"/g,
-      "&quot;"
-    )
-    .replace(
-      /'/g,
-      "&#039;"
-    );
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 
 }
 
