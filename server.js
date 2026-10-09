@@ -710,8 +710,7 @@ input:focus,textarea:focus,select:focus { border-color:var(--green); }
     <div id="modalContent"></div>
   </div>
 </div>
-`;
-}
+
 
 <script>
 function byId(id) {
