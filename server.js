@@ -238,6 +238,55 @@ const html = `<!doctype html>
 <html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>چیکام | پلتفرم ایده و مشارکت</title>
 <style>
 :root{--g:#126b54;--mint:#e8f5ef;--ink:#18352e;--muted:#60756e;--line:#dce9e3}*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;background:#f5f8f6;color:var(--ink);line-height:1.9}header{background:white;border-bottom:1px solid var(--line);position:sticky;top:0}.nav{max-width:1000px;margin:auto;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.brand{display:flex;align-items:center;gap:10px;font-size:25px;font-weight:bold;color:var(--g)}.brandMark{width:42px;height:42px;border-radius:13px;background:linear-gradient(135deg,#126b54,#65b99a);color:#fff;display:grid;place-items:center;font-size:15px;font-weight:900;box-shadow:0 5px 14px #126b5425}.brandText small{display:block;font-size:11px;font-weight:400;color:var(--muted)}.passwordRow{display:flex;gap:7px;align-items:center}.passwordRow .field{flex:1;min-width:0}.eyeBtn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 11px;cursor:pointer;font-size:17px}nav a{color:var(--ink);text-decoration:none;margin:0 7px;font-size:14px}main{max-width:1000px;margin:auto;padding:22px 15px}.hero{background:linear-gradient(135deg,#e4f5ec,#fff);border:1px solid var(--line);border-radius:24px;padding:28px 22px;margin-bottom:20px}h1{font-size:clamp(24px,5vw,38px);line-height:1.6;margin:0 0 8px}.hero p,.muted{color:var(--muted)}.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}.authChoice{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}.authChoice .btn{flex:1;min-width:120px}.card{background:white;border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:16px}.card h2{margin-top:0}.btn{border:0;border-radius:12px;background:var(--g);color:white;padding:10px 16px;font:inherit;cursor:pointer}.secondary{background:white;color:var(--g);border:1px solid var(--g)}.small{padding:5px 10px;font-size:13px}.field{display:block;width:100%;border:1px solid #ccdcd4;border-radius:10px;padding:11px;margin:8px 0 12px;font:inherit;background:white}.idea{border-top:1px solid var(--line);padding:15px 0}.tag{display:inline-block;background:var(--mint);color:var(--g);border-radius:20px;padding:2px 10px;font-size:12px}.notice{padding:10px;border-radius:10px;background:var(--mint);margin:10px 0}.hidden{display:none}.muted{font-size:13px}footer{text-align:center;padding:25px;color:var(--muted);font-size:13px}
+
+/* اصلاح ظاهر ورود مدیر چیکام */
+#adminDetails {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fbf9;
+  overflow: hidden;
+}
+
+#adminDetails summary {
+  cursor: pointer;
+  color: var(--g);
+  font-weight: bold;
+  padding: 4px;
+}
+
+#adminDetails form {
+  width: 100%;
+  margin-top: 10px;
+}
+
+#adminDetails .field {
+  width: 100%;
+  min-width: 0;
+  margin: 8px 0 12px;
+}
+
+#adminDetails .passwordRow {
+  width: 100%;
+  min-width: 0;
+  gap: 6px;
+}
+
+#adminDetails .passwordRow .field {
+  flex: 1;
+  min-width: 0;
+}
+
+#adminDetails button[type="submit"] {
+  width: 100%;
+}
+
+@media (max-width: 480px) {
+  #adminDetails {
+    padding: 8px;
+  }
+}
 </style></head><body><header><div class="nav"><div class="brand"><div class="brandMark">CH</div><div class="brandText">CHIKAM<small>چیکام — خانه ایده‌ها</small></div></div><nav><a href="#ideas">خانه ایده‌ها</a><a href="#account">حساب کاربری</a><a href="#ads">تبلیغات کاربران</a></nav></div></header><main>
 <section class="hero"><h1>ایده‌ای داری؟ با دیگران بسازش.</h1><p>چیکام، پلتفرم ایده و مشارکت؛ مسئله‌ات را مطرح کن، از دیگران نظر بگیر، به راه‌حل‌ها رأی بده و برای اجرای بهترین ایده همراه شو.</p><a class="btn" href="#ideas" style="display:inline-block;text-decoration:none">دیدن ایده‌ها</a> <a class="btn secondary" href="#account" style="display:inline-block;text-decoration:none">ورود یا ثبت‌نام</a></section>
 <div class="row"><section class="card" id="account"><h2>👤 حساب کاربری</h2><div id="accountState" class="muted">در حال بررسی حساب…</div><div id="authForms"><div id="authChoice" class="authChoice"><button class="btn" type="button" id="chooseRegister">ایجاد حساب</button><button class="btn secondary" type="button" id="chooseLogin">ورود</button></div><div id="registerWrap" class="hidden"><h3>ایجاد حساب کاربری</h3><form id="registerForm"><input class="field" name="username" minlength="3" maxlength="50" autocomplete="username" placeholder="نام کاربری (حداقل ۳ نویسه)" required><div class="passwordRow"><input class="field" id="regPassword" name="password" type="password" minlength="6" autocomplete="new-password" placeholder="رمز عبور (حداقل ۶ نویسه)" required><button class="eyeBtn" type="button" data-eye="regPassword" aria-label="نمایش رمز">👁️</button></div><div class="passwordRow"><input class="field" id="regConfirm" name="confirmPassword" type="password" minlength="6" autocomplete="new-password" placeholder="تکرار رمز عبور" required><button class="eyeBtn" type="button" data-eye="regConfirm" aria-label="نمایش تکرار رمز">👁️</button></div><input class="field" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="شماره تماس (اختیاری)"><input class="field" name="email" type="email" autocomplete="email" placeholder="ایمیل (اختیاری)"><button class="btn" type="submit">ثبت‌نام</button></form><button class="btn secondary small" type="button" id="backFromRegister">بازگشت</button></div><div id="loginWrap" class="hidden"><h3>ورود به حساب</h3><form id="loginForm"><input class="field" name="username" autocomplete="username" placeholder="نام کاربری" required><div class="passwordRow"><input class="field" id="loginPassword" name="password" type="password" autocomplete="current-password" placeholder="رمز عبور" required><button class="eyeBtn" type="button" data-eye="loginPassword" aria-label="نمایش رمز">👁️</button></div><button class="btn secondary" type="submit">ورود</button></form><button class="btn secondary small" type="button" id="backFromLogin">بازگشت</button></div><hr><details id="adminDetails"><summary>ورود مدیر</summary><form id="adminForm"><input class="field" name="username" autocomplete="username" placeholder="نام کاربری مدیر" required><div class="passwordRow"><input class="field" id="adminPassword" name="password" type="password" autocomplete="current-password" placeholder="رمز مدیر" required><button class="eyeBtn" type="button" data-eye="adminPassword" aria-label="نمایش رمز مدیر">👁️</button></div><button class="btn secondary" type="submit">ورود به پنل مدیر</button></form></details></div><div id="authMessage" class="notice hidden" role="status" aria-live="polite"></div><section id="adminPanel" class="notice hidden"><h3>پنل مدیریت چیکام</h3><div id="adminStats"></div><div id="adminUsers"></div><button id="adminRefresh" class="btn secondary" type="button">به‌روزرسانی پنل</button></section></section>
