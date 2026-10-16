@@ -114,11 +114,9 @@ async function initDb() {
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'ads' AND column_name = 'description') THEN
       EXECUTE 'UPDATE ads SET body = description WHERE body IS NULL AND description IS NOT NULL';
     END IF;
-  END $$`);
-  await pool.query("ALTER TABLE ideas ADD COLUMN IF NOT EXISTS category VARCHAR(80) DEFAULT 'عمومی'");
-  await pool.query("ALTER TABLE ideas ADD COLUMN IF NOT EXISTS votes INTEGER NOT NULL DEFAULT 0");
-}  await pool.query("ALTER TABLE ideas ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
-
+    await pool.query("ALTER TABLE ideas ADD COLUMN IF NOT EXISTS votes INTEGER NOT NULL DEFAULT 0");
+  await pool.query("ALTER TABLE ideas ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
+}
 app.get("/db-test", async (_req, res) => {
   try { const r = await pool.query("SELECT NOW() AS time"); res.json({ ok: true, message: "اتصال پایگاه داده برقرار است.", time: r.rows[0].time }); }
   catch (e) { console.error("db-test", e); res.status(500).json({ ok: false, error: "اتصال پایگاه داده ناموفق بود." }); }
