@@ -117,7 +117,7 @@ async function initDb() {
   END $$`);
   await pool.query("ALTER TABLE ideas ADD COLUMN IF NOT EXISTS category VARCHAR(80) DEFAULT 'عمومی'");
   await pool.query("ALTER TABLE ideas ADD COLUMN IF NOT EXISTS votes INTEGER NOT NULL DEFAULT 0");
-}
+}  await pool.query("ALTER TABLE ideas ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
 
 app.get("/db-test", async (_req, res) => {
   try { const r = await pool.query("SELECT NOW() AS time"); res.json({ ok: true, message: "اتصال پایگاه داده برقرار است.", time: r.rows[0].time }); }
